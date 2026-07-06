@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDNS 管理后台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>DDNS 管理后台</h1>
+      <div class="header-actions">
+        <button id="btnManualUpdate" class="btn btn-primary">
+          <span class="icon">↻</span> 立即更新
+        </button>
+        <button id="btnSettings" class="btn btn-outline">
+          <span class="icon">⚙</span> 设置
+        </button>
+      </div>
+    </header>
+
+    <!-- 状态卡片 -->
+    <div class="cards">
+      <div class="card">
+        <div class="card-title">公网 IP</div>
+        <div class="card-content">
+          <div class="ip-row">
+            <span class="ip-label">v4:</span>
+            <span id="ipv4" class="ip-value">检测中...</span>
+          </div>
+          <div class="ip-row">
+            <span class="ip-label">v6:</span>
+            <span id="ipv6" class="ip-value">检测中...</span>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">上次更新</div>
+        <div class="card-content">
+          <span id="lastUpdate" class="time-value">暂无</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">运行状态</div>
+        <div class="card-content">
+          <div class="status-row">
+            <span class="status-dot status-running"></span>
+            <span class="status-text status-running-text">运行中</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签页 -->
+    <div class="tabs">
+      <button class="tab active" data-tab="domains">域名管理</button>
+      <button class="tab" data-tab="logs">更新日志</button>
+    </div>
+
+    <!-- 域名管理 -->
+    <div class="tab-content active" id="tab-domains">
+      <div class="toolbar">
+        <button id="btnAddDomain" class="btn btn-primary btn-sm">
+          <span class="icon">+</span> 新增域名
+        </button>
+      </div>
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>域名</th>
+              <th>记录类型</th>
+              <th>TTL</th>
+              <th>状态</th>
+              <th>最近更新</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="domainTableBody">
+            <tr>
+              <td colspan="6" class="empty">加载中...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 更新日志 -->
+    <div class="tab-content" id="tab-logs">
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>域名</th>
+              <th>新IP</th>
+              <th>类型</th>
+              <th>状态</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr>
+              <td colspan="6" class="empty">加载中...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+  </div>
+
+  <!-- 域名编辑弹窗 -->
+  <div class="modal" id="domainModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">新增域名</h3>
+        <button class="modal-close" onclick="closeModal('domainModal')">×</button>
+      </div>
+      <form id="domainForm" class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>主域名 <span class="required">*</span></label>
+            <input type="text" id="domain" placeholder="example.com" required>
+          </div>
+          <div class="form-group">
+            <label>子域名 <span class="required">*</span></label>
+            <input type="text" id="subdomain" value="@" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>记录类型</label>
+            <select id="recordType">
+              <option value="A">A (IPv4)</option>
+              <option value="AAAA">AAAA (IPv6)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>TTL (秒)</label>
+            <input type="number" id="ttl" value="600" min="60" max="86400">
+          </div>
+        </div>
+        <div class="form-group form-switch">
+          <label>启用此配置</label>
+          <label class="switch">
+            <input type="checkbox" id="enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('domainModal')">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 设置弹窗 -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>系统设置</h3>
+        <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+      </div>
+      <form id="settingsForm" class="modal-body">
+        <h4 class="section-title">阿里云凭证</h4>
+        <div class="form-group">
+          <label>AccessKey ID</label>
+          <input type="text" id="accessKeyId" placeholder="输入AccessKey ID">
+        </div>
+        <div class="form-group">
+          <label>AccessKey Secret</label>
+          <input type="password" id="accessKeySecret" placeholder="输入AccessKey Secret">
+        </div>
+
+        <h4 class="section-title">检测参数</h4>
+        <div class="form-group">
+          <label>检测间隔 (分钟)</label>
+          <input type="number" id="checkInterval" value="5" min="1" max="1440">
+        </div>
+
+        <h4 class="section-title">协议开关</h4>
+        <div class="form-group form-switch">
+          <label>IPv4 检测</label>
+          <label class="switch">
+            <input type="checkbox" id="ipv4Enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="form-group form-switch">
+          <label>IPv6 检测</label>
+          <label class="switch">
+            <input type="checkbox" id="ipv6Enabled" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('settingsModal')">取消</button>
+          <button type="submit" class="btn btn-primary">保存设置</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 确认弹窗 -->
+  <div class="modal" id="confirmModal">
+    <div class="modal-content modal-sm">
+      <div class="modal-header">
+        <h3>确认删除</h3>
+        <button class="modal-close" onclick="closeModal('confirmModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage">确定要删除吗？此操作不可撤销。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('confirmModal')">取消</button>
+        <button class="btn btn-danger" id="confirmOk">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
