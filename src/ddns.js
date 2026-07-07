@@ -32,7 +32,19 @@ function fetchIP(url) {
  */
 async function getIPv4(apiUrl = 'https://api.ipify.org') {
   // Try multiple IPv4 services
-  const urls = [apiUrl, 'https://v4.ident.me', 'https://ipv4.icanhazip.com'];
+  const urls = [
+    'https://api.ipify.org',
+    'https://v4.ident.me',
+    'https://ifconfig.me/ip',
+    'https://icanhazip.com',
+    'https://ipecho.net/plain',
+    'https://myexternalip.com/raw',
+    'https://wtfismyip.com/text',
+    'https://checkip.amazonaws.com'
+  ];
+  if (apiUrl && !urls.includes(apiUrl)) {
+    urls.unshift(apiUrl);
+  }
   for (const url of urls) {
     try {
       return await fetchIP(url);
@@ -47,7 +59,17 @@ async function getIPv4(apiUrl = 'https://api.ipify.org') {
  * Get current public IPv6
  */
 async function getIPv6(apiUrl = 'https://api6.ipify.org') {
-  const urls = [apiUrl, 'https://v6.ident.me', 'https://ipv6.icanhazip.com'];
+  const urls = [
+    'https://api6.ipify.org',
+    'https://v6.ident.me',
+    'https://ipv6.icanhazip.com',
+    'https://ifconfig.co',
+    'https://icanhazip.com',
+    'https://checkip.amazonaws.com'
+  ];
+  if (apiUrl && !urls.includes(apiUrl)) {
+    urls.unshift(apiUrl);
+  }
   for (const url of urls) {
     try {
       return await fetchIP(url);
