@@ -129,8 +129,17 @@
           <div><label class="switch"><input type="checkbox" id="ipv6Toggle" onchange="saveQuickConfig()"><span class="slider"></span></label></div>
         </div>
         <div class="form-group">
-          <label>同步频率 (cron)</label>
-          <input type="text" id="cronExpr" placeholder="*/5 * * * *" onchange="saveQuickConfig()">
+          <label>同步间隔（秒）</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="intervalInput" placeholder="300" min="30" max="86400" onchange="saveQuickConfig()" style="width:100px;">
+            <span style="font-size:12px;color:var(--text-secondary);">建议：300秒（5分钟）</span>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-sm btn-default" onclick="setInterval(60)">60秒</button>
+            <button class="btn btn-sm btn-default" onclick="setInterval(300)">5分钟</button>
+            <button class="btn btn-sm btn-default" onclick="setInterval(600)">10分钟</button>
+            <button class="btn btn-sm btn-default" onclick="setInterval(1800)">30分钟</button>
+          </div>
         </div>
       </div>
       <div class="status-row">
@@ -216,13 +225,18 @@
       }
     }
 
+    function setInterval(seconds) {
+      document.getElementById('intervalInput').value = seconds;
+      saveQuickConfig();
+    }
+
     async function loadConfig() {
       config = await api('/api/config');
       document.getElementById('akId').value = config.aliyun?.accessKeyId || '';
       document.getElementById('akSecret').value = config.aliyun?.accessKeySecret || '';
       document.getElementById('ipv4Toggle').checked = config.ipv4 !== false;
       document.getElementById('ipv6Toggle').checked = config.ipv6 === true;
-      document.getElementById('cronExpr').value = config.cron || '*/5 * * * *';
+      document.getElementById('intervalInput').value = config.interval || 300;
       domains = config.domains || [];
       renderDomains();
       refreshIPs();
@@ -263,13 +277,14 @@
     }
 
     async function saveQuickConfig() {
+      const interval = parseInt(document.getElementById('intervalInput').value) || 300;
       await api('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ipv4: document.getElementById('ipv4Toggle').checked,
           ipv6: document.getElementById('ipv6Toggle').checked,
-          cron: document.getElementById('cronExpr').value.trim() || '*/5 * * * *'
+          interval: Math.max(30, Math.min(86400, interval))
         })
       });
       toast('设置已保存');

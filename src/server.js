@@ -1,6 +1,5 @@
 const express = require('express');
 const path = require('path');
-const cron = require('node-cron');
 const { loadConfig, saveConfig, log, getLogs } = require('./config');
 const { getIPv4, getIPv6, syncAll } = require('./ddns');
 
@@ -10,7 +9,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 let config = loadConfig();
 let syncStatus = { lastSync: null, results: [], running: false };
-let cronJob = null;
+let intervalJob = null;
 
 // ==================== API Routes ====================
 
@@ -38,7 +37,7 @@ app.post('/api/config', (req, res) => {
     config.aliyun = { ...config.aliyun, ...newConfig.aliyun };
   }
   if (saveConfig(config)) {
-    restartCron();
+    restartInterval();
     res.json({ ok: true });
   } else {
     res.status(500).json({ ok: false, error: 'save failed' });
@@ -125,12 +124,13 @@ app.post('/api/logs/clear', (req, res) => {
   }
 });
 
-// ==================== Cron ====================
+// ==================== Interval ====================
 
-function restartCron() {
-  if (cronJob) cronJob.stop();
+function restartInterval() {
+  if (intervalJob) clearInterval(intervalJob);
   if (config.aliyun.accessKeyId && config.domains.length > 0) {
-    cronJob = cron.schedule(config.cron || '*/5 * * * *', async () => {
+    const seconds = config.interval || 300;
+    intervalJob = setInterval(async () => {
       if (syncStatus.running) return;
       syncStatus.running = true;
       try {
@@ -138,16 +138,16 @@ function restartCron() {
         syncStatus.lastSync = new Date().toISOString();
         syncStatus.results = results;
       } catch (e) {
-        log(`[DDNS] Cron sync error: ${e.message}`);
+        log(`[DDNS] Interval sync error: ${e.message}`);
       } finally {
         syncStatus.running = false;
       }
-    });
-    log(`[DDNS] Cron started: ${config.cron}`);
+    }, seconds * 1000);
+    log(`[DDNS] Interval started: every ${seconds} seconds`);
   }
 }
 
-restartCron();
+restartInterval();
 
 // ==================== Start ====================
 

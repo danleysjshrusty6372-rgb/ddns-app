@@ -12,7 +12,7 @@ const DEFAULT_CONFIG = {
     regionId: 'cn-hangzhou'
   },
   domains: [],
-  cron: '*/5 * * * *', // every 5 minutes
+  interval: 300, // 300 seconds = 5 minutes
   ipv4: true,
   ipv6: false,
   ipv4_api: 'https://api.ipify.org',
