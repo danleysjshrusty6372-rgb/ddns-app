@@ -168,9 +168,10 @@ restartInterval();
 
 // ==================== Start ====================
 
+const HOST = '::';
 const PORT = config.port || 3000;
-app.listen(PORT, () => {
-  log(`[DDNS] Server started at http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  log(`[DDNS] Server started at http://${HOST}:${PORT}`);
   log(`[DDNS] Web UI: http://localhost:${PORT}`);
 });
 

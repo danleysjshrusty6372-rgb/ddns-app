@@ -10,9 +10,10 @@ const { log } = require('./config');
 function fetchIP(url, expectV6 = false) {
   return new Promise((resolve, reject) => {
     const timeout = url.includes('ipv6') || url.includes('v6') ? 15000 : 10000;
-    const cmd = `curl -sk --noproxy all --max-time ${timeout / 1000} "${url}"`;
+    const cmd = `curl -sk --max-time ${timeout / 1000} "${url}"`;
 
-    exec(cmd, { timeout: timeout + 2000 }, (error, stdout, stderr) => {
+    const env = { ...process.env, NO_PROXY: '*' };
+    exec(cmd, { timeout: timeout + 2000, env }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`curl failed: ${error.message}`));
         return;
