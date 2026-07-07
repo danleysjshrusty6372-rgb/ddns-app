@@ -227,8 +227,8 @@
 
     async function refreshIPs() {
       const data = await api('/api/current-ips');
-      document.getElementById('ipv4Addr').textContent = data.ipv4 || data.ipv4_error || 'N/A';
-      document.getElementById('ipv6Addr').textContent = data.ipv6 || data.ipv6_error || 'N/A';
+      document.getElementById('ipv4Addr').textContent = data.ipv4 || 'N/A';
+      document.getElementById('ipv6Addr').textContent = data.ipv6 || 'N/A';
     }
 
     async function refreshStatus() {
