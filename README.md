@@ -4,11 +4,12 @@
 
 ## 功能特性
 
-- 🚀 **轻量简洁** — 纯 Node.js，无需数据库，配置存储为 JSON 文件
-- 🌐 **双栈支持** — 同时支持 IPv4 (A记录) 和 IPv6 (AAAA记录)，可独立开关
-- ☁️ **阿里云 DNS** — 通过阿里云 API 自动更新域名解析记录
-- 🖥️ **Web 管理面板** — 可视化管理域名、配置、查看日志、手动同步
-- ⏰ **定时同步** — 基于 cron 表达式，默认每 5 分钟检测 IP 变化并更新
+- **双栈支持** — 同时支持 IPv4 (A记录) 和 IPv6 (AAAA记录)，可独立开关
+- **Web 管理面板** — 可视化管理域名、配置、查看日志、手动同步
+- **阿里云 DNS** — 通过阿里云 API 自动更新域名解析记录，自实现签名无需SDK
+- **定时同步** — 基于 cron 表达式，默认每 5 分钟检测 IP 变化并更新
+- **轻量简洁** — 纯 Node.js，无需数据库，配置存储为 JSON 文件
+- **多API备选** — 自动尝试多个 IP 检测服务，提高可用性
 
 ## 快速开始
 
@@ -20,16 +21,14 @@
 ### 安装
 
 ```bash
-# 双击运行 install.bat
-# 或手动执行：
+git clone https://github.com/danleysjshrusty6372-rgb/ddns-app.git
+cd ddns-app
 npm install
 ```
 
 ### 运行
 
 ```bash
-# 双击 start.bat
-# 或
 npm start
 ```
 
@@ -92,6 +91,7 @@ ddns-app/
 - **定时任务**: node-cron
 - **前端**: 原生 HTML/CSS/JS（零框架）
 - **阿里云 API**: 自实现 HMAC-SHA1 签名，无需 SDK
+- **IP检测**: 使用 curl 调用多个在线服务，支持 IPv4/IPv6
 
 ## License
 
