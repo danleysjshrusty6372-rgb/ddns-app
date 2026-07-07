@@ -216,10 +216,18 @@
     }
 
     async function saveConfig() {
+      const akId = document.getElementById('akId').value.trim();
+      const akSecret = document.getElementById('akSecret').value.trim();
+
+      if (!akId || !akSecret) {
+        toast('请填写完整的 AccessKey ID 和 Secret', 'error');
+        return;
+      }
+
       const newConfig = {
         aliyun: {
-          accessKeyId: document.getElementById('akId').value.trim(),
-          accessKeySecret: document.getElementById('akSecret').value.trim(),
+          accessKeyId: akId,
+          accessKeySecret: akSecret,
           regionId: config.aliyun?.regionId || 'cn-hangzhou'
         }
       };

@@ -14,12 +14,10 @@ let cronJob = null;
 
 // ==================== API Routes ====================
 
-/** Get full config (mask secret) */
+/** Get full config (mask secret for display) */
 app.get('/api/config', (req, res) => {
   const safe = JSON.parse(JSON.stringify(config));
-  if (safe.aliyun.accessKeySecret) {
-    safe.aliyun.accessKeySecret = '****' + safe.aliyun.accessKeySecret.slice(-4);
-  }
+  // Don't mask secret in API response to allow proper editing
   res.json(safe);
 });
 
