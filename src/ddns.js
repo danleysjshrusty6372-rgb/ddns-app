@@ -1,7 +1,7 @@
 const https = require('https');
 const http = require('http');
 const { exec } = require('child_process');
-const AliyunDNS = require('./aliyun');
+const { createProvider } = require('./providers');
 const { log } = require('./config');
 
 /**
@@ -140,7 +140,7 @@ async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Ap
           log(`[OK] ${rr}.${domain} (${recordType}) unchanged: ${currentIP}`);
           results.push({ domain, rr, type: recordType, action: 'unchanged', ip: currentIP });
         } else {
-          await client.updateDomainRecord(existing.RecordId, rr, recordType, currentIP);
+          await client.updateDomainRecord(domain, existing.RecordId, rr, recordType, currentIP);
           log(`[OK] ${rr}.${domain} (${recordType}) updated: ${existing.Value} -> ${currentIP}`);
           results.push({ domain, rr, type: recordType, action: 'updated', ip: currentIP, oldIP: existing.Value });
         }
@@ -162,19 +162,22 @@ async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Ap
  * Run DDNS sync for all configured domains
  */
 async function syncAll(config) {
-  const { aliyun, domains, ipv4, ipv6, ipv4_api, ipv6_api } = config;
-
-  if (!aliyun.accessKeyId || !aliyun.accessKeySecret) {
-    log('[DDNS] Aliyun credentials not configured');
-    return [];
-  }
+  const { provider = 'aliyun', credentials = {}, domains, ipv4, ipv6, ipv4_api, ipv6_api } = config;
+  const providerCreds = credentials[provider] || {};
 
   if (!domains.length) {
     log('[DDNS] No domains configured');
     return [];
   }
 
-  const client = new AliyunDNS(aliyun);
+  let client;
+  try {
+    client = createProvider(provider, providerCreds);
+  } catch (e) {
+    log(`[DDNS] ${e.message}`);
+    return [];
+  }
+
   const allResults = [];
 
   for (const domainConfig of domains) {

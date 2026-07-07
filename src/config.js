@@ -6,10 +6,12 @@ const LOG_FILE = path.join(__dirname, '..', 'data', 'ddns.log');
 
 const DEFAULT_CONFIG = {
   port: 3000,
-  aliyun: {
-    accessKeyId: '',
-    accessKeySecret: '',
-    regionId: 'cn-hangzhou'
+  provider: 'aliyun',
+  credentials: {
+    aliyun: { accessKeyId: '', accessKeySecret: '', regionId: 'cn-hangzhou' },
+    tencent: { secretId: '', secretKey: '' },
+    huawei: { ak: '', sk: '', region: 'cn-north-1' },
+    cloudflare: { apiToken: '' }
   },
   domains: [],
   interval: 300, // 300 seconds = 5 minutes
@@ -24,15 +26,40 @@ function loadConfig() {
     if (fs.existsSync(CONFIG_FILE)) {
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const saved = JSON.parse(raw);
-      // Deep merge to preserve new fields
+
+      // Backward compatibility: migrate old flat aliyun config to credentials structure
+      if (saved.aliyun && !saved.credentials) {
+        saved.credentials = {
+          ...DEFAULT_CONFIG.credentials,
+          aliyun: { ...DEFAULT_CONFIG.credentials.aliyun, ...saved.aliyun }
+        };
+        saved.provider = saved.provider || 'aliyun';
+        delete saved.aliyun;
+      }
+
+      // Deep merge credentials
       const merged = { ...DEFAULT_CONFIG, ...saved };
-      merged.aliyun = { ...DEFAULT_CONFIG.aliyun, ...(saved.aliyun || {}) };
+      merged.credentials = {
+        aliyun: { ...DEFAULT_CONFIG.credentials.aliyun, ...(saved.credentials?.aliyun || {}) },
+        tencent: { ...DEFAULT_CONFIG.credentials.tencent, ...(saved.credentials?.tencent || {}) },
+        huawei: { ...DEFAULT_CONFIG.credentials.huawei, ...(saved.credentials?.huawei || {}) },
+        cloudflare: { ...DEFAULT_CONFIG.credentials.cloudflare, ...(saved.credentials?.cloudflare || {}) }
+      };
+      merged.provider = saved.provider || DEFAULT_CONFIG.provider;
       return merged;
     }
   } catch (e) {
     console.error('[config] Failed to load config:', e.message);
   }
-  return { ...DEFAULT_CONFIG, aliyun: { ...DEFAULT_CONFIG.aliyun } };
+  return {
+    ...DEFAULT_CONFIG,
+    credentials: {
+      aliyun: { ...DEFAULT_CONFIG.credentials.aliyun },
+      tencent: { ...DEFAULT_CONFIG.credentials.tencent },
+      huawei: { ...DEFAULT_CONFIG.credentials.huawei },
+      cloudflare: { ...DEFAULT_CONFIG.credentials.cloudflare }
+    }
+  };
 }
 
 function saveConfig(config) {

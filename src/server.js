@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const { loadConfig, saveConfig, log, getLogs } = require('./config');
 const { getIPv4, getIPv6, syncAll } = require('./ddns');
+const { createProvider } = require('./providers');
 
 const app = express();
 app.use(express.json());
@@ -24,18 +25,32 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
   const newConfig = req.body;
 
-  // Clean AccessKey values - remove any non-alphanumeric characters
-  if (newConfig.aliyun?.accessKeyId) {
-    newConfig.aliyun.accessKeyId = newConfig.aliyun.accessKeyId.replace(/[^A-Za-z0-9]/g, '');
-  }
-  if (newConfig.aliyun?.accessKeySecret) {
-    newConfig.aliyun.accessKeySecret = newConfig.aliyun.accessKeySecret.replace(/[^A-Za-z0-9]/g, '');
+  // Update provider if changed
+  if (newConfig.provider) {
+    config.provider = newConfig.provider;
   }
 
-  config = { ...config, ...newConfig };
-  if (newConfig.aliyun) {
-    config.aliyun = { ...config.aliyun, ...newConfig.aliyun };
+  // Update credentials for the specified provider (or current provider)
+  if (newConfig.credentials) {
+    const providerKey = newConfig.provider || config.provider;
+    const creds = newConfig.credentials[providerKey] || newConfig.credentials;
+    if (creds) {
+      // Clean alphanumeric-only fields
+      for (const [key, val] of Object.entries(creds)) {
+        if (typeof val === 'string' && (key.includes('Id') || key.includes('Key') || key.includes('Secret') || key.includes('Token') || key === 'ak' || key === 'sk')) {
+          creds[key] = val.replace(/[^A-Za-z0-9\-_]/g, '');
+        }
+      }
+      config.credentials = { ...config.credentials, [providerKey]: { ...config.credentials[providerKey], ...creds } };
+    }
   }
+
+  // Handle other config fields
+  if (newConfig.domains !== undefined) config.domains = newConfig.domains;
+  if (newConfig.ipv4 !== undefined) config.ipv4 = newConfig.ipv4;
+  if (newConfig.ipv6 !== undefined) config.ipv6 = newConfig.ipv6;
+  if (newConfig.interval !== undefined) config.interval = newConfig.interval;
+
   if (saveConfig(config)) {
     restartInterval();
     res.json({ ok: true });
@@ -44,14 +59,13 @@ app.post('/api/config', (req, res) => {
   }
 });
 
-/** Test Aliyun connection */
+/** Test connection for current provider */
 app.post('/api/test-connection', async (req, res) => {
   try {
-    const AliyunDNS = require('./aliyun');
-    const client = new AliyunDNS(config.aliyun);
-    // Try to list domains as a test
-    const params = client._buildParams('DescribeDomains');
-    await client._request(params);
+    const provider = config.provider || 'aliyun';
+    const creds = config.credentials?.[provider] || {};
+    const client = createProvider(provider, creds);
+    await client.testConnection();
     res.json({ ok: true, message: '连接成功' });
   } catch (e) {
     res.json({ ok: false, error: e.message });
@@ -117,9 +131,21 @@ app.post('/api/logs/clear', (req, res) => {
 
 // ==================== Interval ====================
 
+function hasValidCredentials() {
+  const p = config.provider || 'aliyun';
+  const c = config.credentials?.[p] || {};
+  switch (p) {
+    case 'cloudflare': return !!c.apiToken;
+    case 'tencent': return !!(c.secretId && c.secretKey);
+    case 'huawei': return !!(c.ak && c.sk);
+    case 'aliyun':
+    default: return !!(c.accessKeyId && c.accessKeySecret);
+  }
+}
+
 function restartInterval() {
   if (intervalJob) clearInterval(intervalJob);
-  if (config.aliyun.accessKeyId && config.domains.length > 0) {
+  if (hasValidCredentials() && config.domains.length > 0) {
     const seconds = config.interval || 300;
     intervalJob = setInterval(async () => {
       if (syncStatus.running) return;
@@ -150,7 +176,7 @@ app.listen(PORT, () => {
 
 // Initial sync on startup (delayed)
 setTimeout(async () => {
-  if (config.aliyun.accessKeyId && config.domains.length > 0) {
+  if (hasValidCredentials() && config.domains.length > 0) {
     log('[DDNS] Running initial sync...');
     syncStatus.running = true;
     try {

@@ -101,22 +101,12 @@
           <label>云厂商</label>
           <select id="provider" onchange="updateProvider()">
             <option value="aliyun">阿里云</option>
-            <option value="tencent" disabled>腾讯云（开发中）</option>
-            <option value="huawei" disabled>华为云（开发中）</option>
-            <option value="cloudflare" disabled>Cloudflare（开发中）</option>
+            <option value="tencent">腾讯云 DNSPod</option>
+            <option value="huawei">华为云</option>
+            <option value="cloudflare">Cloudflare</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>AccessKey ID</label>
-          <input type="text" id="akId" placeholder="输入 AccessKey ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-        </div>
-        <div class="form-group">
-          <label>AccessKey Secret</label>
-          <div style="position:relative;">
-            <input type="password" id="akSecret" placeholder="输入 AccessKey Secret" style="padding-right:40px;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-            <button type="button" onclick="toggleSecret()" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;">👁️</button>
-          </div>
-        </div>
+        <div id="credentialFields"></div>
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
@@ -210,6 +200,25 @@
     let config = {};
     let domains = [];
 
+    // Provider field definitions
+    const PROVIDER_FIELDS = {
+      aliyun: [
+        { key: 'accessKeyId', label: 'AccessKey ID', type: 'text', placeholder: '输入阿里云 AccessKey ID' },
+        { key: 'accessKeySecret', label: 'AccessKey Secret', type: 'password', placeholder: '输入阿里云 AccessKey Secret' }
+      ],
+      tencent: [
+        { key: 'secretId', label: 'SecretId', type: 'text', placeholder: '输入腾讯云 SecretId' },
+        { key: 'secretKey', label: 'SecretKey', type: 'password', placeholder: '输入腾讯云 SecretKey' }
+      ],
+      huawei: [
+        { key: 'ak', label: 'AK (Access Key)', type: 'text', placeholder: '输入华为云 AK' },
+        { key: 'sk', label: 'SK (Secret Key)', type: 'password', placeholder: '输入华为云 SK' }
+      ],
+      cloudflare: [
+        { key: 'apiToken', label: 'API Token', type: 'password', placeholder: '输入 Cloudflare API Token' }
+      ]
+    };
+
     async function api(url, options = {}) {
       const res = await fetch(url, options);
       return res.json();
@@ -223,9 +232,8 @@
       setTimeout(() => el.remove(), 4000);
     }
 
-    function toggleSecret() {
-      const input = document.getElementById('akSecret');
-      const btn = input.nextElementSibling;
+    function toggleSecret(btn) {
+      const input = btn.previousElementSibling;
       if (input.type === 'password') {
         input.type = 'text';
         btn.textContent = '🙈';
@@ -240,10 +248,31 @@
       saveQuickConfig();
     }
 
+    function updateProvider() {
+      const provider = document.getElementById('provider').value;
+      const container = document.getElementById('credentialFields');
+      const fields = PROVIDER_FIELDS[provider] || [];
+      const creds = config.credentials?.[provider] || {};
+
+      container.innerHTML = fields.map(f => {
+        const val = creds[f.key] || '';
+        const isPassword = f.type === 'password';
+        return `<div class="form-group">
+          <label>${f.label}</label>
+          <div style="position:relative;">
+            <input type="${f.type}" id="cred_${f.key}" value="${val}" placeholder="${f.placeholder}" style="${isPassword ? 'padding-right:40px;' : ''}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            ${isPassword ? '<button type="button" onclick="toggleSecret(this)" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;">👁️</button>' : ''}
+          </div>
+        </div>`;
+      }).join('');
+    }
+
     async function loadConfig() {
       config = await api('/api/config');
-      document.getElementById('akId').value = config.aliyun?.accessKeyId || '';
-      document.getElementById('akSecret').value = config.aliyun?.accessKeySecret || '';
+      // Set provider dropdown
+      document.getElementById('provider').value = config.provider || 'aliyun';
+      // Render credential fields for current provider
+      updateProvider();
       document.getElementById('ipv4Toggle').checked = config.ipv4 !== false;
       document.getElementById('ipv6Toggle').checked = config.ipv6 === true;
       document.getElementById('intervalInput').value = config.interval || 300;
@@ -255,26 +284,26 @@
     }
 
     async function saveConfig() {
-      const akId = document.getElementById('akId').value.trim();
-      const akSecret = document.getElementById('akSecret').value.trim();
+      const provider = document.getElementById('provider').value;
+      const fields = PROVIDER_FIELDS[provider] || [];
+      const creds = {};
 
-      if (!akId || !akSecret) {
-        toast('请填写完整的 AccessKey ID 和 Secret', 'error');
-        return;
-      }
-
-      // Basic length validation
-      if (akId.length < 10 || akSecret.length < 10) {
-        toast('AccessKey ID 和 Secret 长度不足', 'error');
-        return;
+      for (const f of fields) {
+        const val = document.getElementById(`cred_${f.key}`)?.value.trim() || '';
+        creds[f.key] = val;
+        if (!val) {
+          toast(`请填写 ${f.label}`, 'error');
+          return;
+        }
+        if (val.length < 6) {
+          toast(`${f.label} 长度不足`, 'error');
+          return;
+        }
       }
 
       const newConfig = {
-        aliyun: {
-          accessKeyId: akId,
-          accessKeySecret: akSecret,
-          regionId: config.aliyun?.regionId || 'cn-hangzhou'
-        }
+        provider,
+        credentials: { [provider]: creds }
       };
       const res = await api('/api/config', {
         method: 'POST',
@@ -301,12 +330,15 @@
     }
 
     async function testConnection() {
+      const provider = document.getElementById('provider').value;
+      const providerNames = { aliyun: '阿里云', tencent: '腾讯云', huawei: '华为云', cloudflare: 'Cloudflare' };
+      const name = providerNames[provider] || provider;
       const div = document.getElementById('testResult');
       div.innerHTML = '<span class="badge badge-info">测试中...</span>';
       const res = await api('/api/test-connection', { method: 'POST' });
       if (res.ok) {
         div.innerHTML = '<span class="badge badge-success">✅ 连接成功</span>';
-        toast('阿里云连接成功');
+        toast(`${name}连接成功`);
       } else {
         div.innerHTML = `<span class="badge badge-danger">❌ ${res.error}</span>`;
         toast('连接失败: ' + res.error, 'error');

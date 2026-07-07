@@ -100,7 +100,7 @@ class AliyunDNS {
   }
 
   /** Update a DNS record */
-  async updateDomainRecord(recordId, rr, type, value, ttl = 600) {
+  async updateDomainRecord(domain, recordId, rr, type, value, ttl = 600) {
     const params = this._buildParams('UpdateDomainRecord', {
       RecordId: recordId,
       RR: rr,
@@ -124,7 +124,7 @@ class AliyunDNS {
   }
 
   /** Delete a DNS record */
-  async deleteDomainRecord(recordId) {
+  async deleteDomainRecord(domain, recordId) {
     const params = this._buildParams('DeleteDomainRecord', { RecordId: recordId });
     return this._request(params);
   }
@@ -135,6 +135,12 @@ class AliyunDNS {
       RecordId: recordId,
       Status: status
     });
+    return this._request(params);
+  }
+
+  /** Test API connectivity */
+  async testConnection() {
+    const params = this._buildParams('DescribeDomains');
     return this._request(params);
   }
 }
