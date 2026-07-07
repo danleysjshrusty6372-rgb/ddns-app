@@ -224,6 +224,17 @@
         return;
       }
 
+      // Validate AccessKey format
+      if (!/^LTAI[A-Za-z0-9]{12,20}$/.test(akId)) {
+        toast('AccessKey ID 格式不正确，应以 LTAI 开头', 'error');
+        return;
+      }
+
+      if (akSecret.length < 20 || akSecret.length > 40 || /[^A-Za-z0-9]/.test(akSecret)) {
+        toast('AccessKey Secret 格式不正确，应为20-40位字母数字', 'error');
+        return;
+      }
+
       const newConfig = {
         aliyun: {
           accessKeyId: akId,
