@@ -2,12 +2,11 @@
   "name": "ddns-app",
   "version": "4.0.0",
   "description": "DDNS 动态域名解析服务客户端",
+  "author": "DDNS Team",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux"
+    "build:win": "electron-packager . DDNS-Service --platform=win32 --arch=x64 --out=../dist --overwrite"
   },
   "build": {
     "appId": "com.ddns.app",
@@ -19,24 +18,15 @@
       "main.js",
       "../src/**/*",
       "../public/**/*",
-      "../data/**/*",
       "../package.json"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "target": "dir"
     }
   },
-  "dependencies": {
-    "electron": "^28.0.0"
-  },
   "devDependencies": {
-    "electron-builder": "^24.0.0"
+    "electron": "^28.3.3",
+    "electron-builder": "^24.0.0",
+    "electron-packager": "^17.1.2"
   }
 }
