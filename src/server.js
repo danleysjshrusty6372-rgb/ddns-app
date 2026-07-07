@@ -24,10 +24,15 @@ app.get('/api/config', (req, res) => {
 /** Save config */
 app.post('/api/config', (req, res) => {
   const newConfig = req.body;
-  // Don't overwrite secret with masked value
-  if (newConfig.aliyun?.accessKeySecret?.startsWith('****')) {
-    newConfig.aliyun.accessKeySecret = config.aliyun.accessKeySecret;
+
+  // Clean AccessKey values - remove any non-alphanumeric characters
+  if (newConfig.aliyun?.accessKeyId) {
+    newConfig.aliyun.accessKeyId = newConfig.aliyun.accessKeyId.replace(/[^A-Za-z0-9]/g, '');
   }
+  if (newConfig.aliyun?.accessKeySecret) {
+    newConfig.aliyun.accessKeySecret = newConfig.aliyun.accessKeySecret.replace(/[^A-Za-z0-9]/g, '');
+  }
+
   config = { ...config, ...newConfig };
   if (newConfig.aliyun) {
     config.aliyun = { ...config.aliyun, ...newConfig.aliyun };
