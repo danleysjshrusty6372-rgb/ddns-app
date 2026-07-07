@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDNS 管理面板</title>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --card-bg: #fff;
+      --border: #e4e7ed;
+      --text: #303133;
+      --text-secondary: #909399;
+      --primary: #409eff;
+      --success: #67c23a;
+      --warning: #e6a23c;
+      --danger: #f56c6c;
+      --radius: 8px;
+      --shadow: 0 2px 12px rgba(0,0,0,.06);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+    h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
+    h1 .dot.off { background: var(--danger); }
+    h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+    .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .form-group { margin-bottom: 12px; flex: 1; min-width: 200px; }
+    .form-group label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; outline: none; transition: border-color .2s; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--primary); }
+    .btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 500; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #3a8ee6; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-success:hover { background: #5daf34; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #e04b4b; }
+    .btn-default { background: #fff; color: var(--text); border: 1px solid var(--border); }
+    .btn-default:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-sm { padding: 4px 12px; font-size: 12px; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
+    tr:hover { background: #f5f7fa; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; }
+    .badge-success { background: #e1f3d8; color: var(--success); }
+    .badge-warning { background: #faecd8; color: var(--warning); }
+    .badge-danger { background: #fde2e2; color: var(--danger); }
+    .badge-info { background: #e6f0fb; color: var(--primary); }
+    .log-viewer { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; }
+    .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 999; animation: slideIn .3s ease; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .toast-success { background: var(--success); }
+    .toast-error { background: var(--danger); }
+    .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #c0c4cc; border-radius: 22px; transition: .3s; }
+    .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .3s; }
+    input:checked + .slider { background: var(--primary); }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .status-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    .status-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .status-value { font-weight: 600; font-family: monospace; }
+    .empty { text-align: center; color: var(--text-secondary); padding: 30px 0; font-size: 14px; }
+    @media (max-width: 640px) { .row { flex-direction: column; } .form-group { min-width: 100%; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>
+      🌐 DDNS 管理面板
+      <span class="dot" id="statusDot"></span>
+    </h1>
+
+    <!-- 阿里云配置 -->
+    <div class="card">
+      <h2>🔑 阿里云 API 配置</h2>
+      <div class="row">
+        <div class="form-group">
+          <label>AccessKey ID</label>
+          <input type="text" id="akId" placeholder="输入 AccessKey ID">
+        </div>
+        <div class="form-group">
+          <label>AccessKey Secret</label>
+          <input type="password" id="akSecret" placeholder="输入 AccessKey Secret">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
+        <button class="btn btn-default" onclick="testConnection()">🔍 测试连接</button>
+      </div>
+    </div>
+
+    <!-- IPv4/IPv6 设置 -->
+    <div class="card">
+      <h2>🌍 IP 类型设置</h2>
+      <div class="row">
+        <div class="form-group">
+          <label>IPv4 解析</label>
+          <div><label class="switch"><input type="checkbox" id="ipv4Toggle" onchange="saveQuickConfig()"><span class="slider"></span></label></div>
+        </div>
+        <div class="form-group">
+          <label>IPv6 解析</label>
+          <div><label class="switch"><input type="checkbox" id="ipv6Toggle" onchange="saveQuickConfig()"><span class="slider"></span></label></div>
+        </div>
+        <div class="form-group">
+          <label>同步频率 (cron)</label>
+          <input type="text" id="cronExpr" placeholder="*/5 * * * *" onchange="saveQuickConfig()">
+        </div>
+      </div>
+      <div class="status-row">
+        <div class="status-item">IPv4: <span class="status-value" id="ipv4Addr">-</span></div>
+        <div class="status-item">IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
+        <button class="btn btn-sm btn-default" onclick="refreshIPs()">🔄 刷新</button>
+      </div>
+    </div>
+
+    <!-- 域名管理 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 域名管理</h2>
+        <button class="btn btn-primary btn-sm" onclick="addDomainRow()">+ 添加域名</button>
+      </div>
+      <table id="domainTable">
+        <thead>
+          <tr><th>域名</th><th>主机记录 (RR)</th><th>记录类型</th><th>状态</th><th>操作</th></tr>
+        </thead>
+        <tbody id="domainTbody">
+        </tbody>
+      </table>
+      <div id="domainEmpty" class="empty" style="display:none;">暂无域名配置，点击上方按钮添加</div>
+      <button class="btn btn-success" onclick="saveDomains()" style="margin-top:12px;">💾 保存域名</button>
+    </div>
+
+    <!-- 手动同步 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>⚡ 同步操作</h2>
+        <span style="font-size:13px;color:var(--text-secondary);" id="lastSync">上次同步: -</span>
+      </div>
+      <button class="btn btn-primary" onclick="manualSync()" id="syncBtn">🔄 立即同步</button>
+      <div id="syncResult" style="margin-top:12px;"></div>
+    </div>
+
+    <!-- 运行日志 -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📜 运行日志</h2>
+        <button class="btn btn-sm btn-default" onclick="refreshLogs()">🔄 刷新</button>
+      </div>
+      <div class="log-viewer" id="logViewer">加载中...</div>
+    </div>
+  </div>
+
+  <script>
+    let config = {};
+    let domains = [];
+
+    async function api(url, options = {}) {
+      const res = await fetch(url, options);
+      return res.json();
+    }
+
+    function toast(msg, type = 'success') {
+      const el = document.createElement('div');
+      el.className = `toast toast-${type}`;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    async function loadConfig() {
+      config = await api('/api/config');
+      document.getElementById('akId').value = config.aliyun?.accessKeyId || '';
+      document.getElementById('akSecret').value = config.aliyun?.accessKeySecret || '';
+      document.getElementById('ipv4Toggle').checked = config.ipv4 !== false;
+      document.getElementById('ipv6Toggle').checked = config.ipv6 === true;
+      document.getElementById('cronExpr').value = config.cron || '*/5 * * * *';
+      domains = config.domains || [];
+      renderDomains();
+      refreshIPs();
+      refreshStatus();
+      refreshLogs();
+    }
+
+    async function saveConfig() {
+      const newConfig = {
+        aliyun: {
+          accessKeyId: document.getElementById('akId').value.trim(),
+          accessKeySecret: document.getElementById('akSecret').value.trim(),
+          regionId: config.aliyun?.regionId || 'cn-hangzhou'
+        }
+      };
+      const res = await api('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newConfig)
+      });
+      if (res.ok) toast('配置已保存');
+      else toast('保存失败: ' + res.error, 'error');
+      loadConfig();
+    }
+
+    async function saveQuickConfig() {
+      await api('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ipv4: document.getElementById('ipv4Toggle').checked,
+          ipv6: document.getElementById('ipv6Toggle').checked,
+          cron: document.getElementById('cronExpr').value.trim() || '*/5 * * * *'
+        })
+      });
+      toast('设置已保存');
+    }
+
+    async function testConnection() {
+      const res = await api('/api/test-connection', { method: 'POST' });
+      if (res.ok) toast('连接成功 ✅');
+      else toast('连接失败: ' + res.error, 'error');
+    }
+
+    async function refreshIPs() {
+      const data = await api('/api/current-ips');
+      document.getElementById('ipv4Addr').textContent = data.ipv4 || data.ipv4_error || 'N/A';
+      document.getElementById('ipv6Addr').textContent = data.ipv6 || data.ipv6_error || 'N/A';
+    }
+
+    async function refreshStatus() {
+      const status = await api('/api/status');
+      if (status.lastSync) {
+        document.getElementById('lastSync').textContent = '上次同步: ' + new Date(status.lastSync).toLocaleString('zh-CN');
+      }
+      const dot = document.getElementById('statusDot');
+      dot.className = 'dot' + (status.lastSync ? '' : ' off');
+    }
+
+    function renderDomains() {
+      const tbody = document.getElementById('domainTbody');
+      const empty = document.getElementById('domainEmpty');
+      if (!domains.length) {
+        tbody.innerHTML = '';
+        empty.style.display = 'block';
+        return;
+      }
+      empty.style.display = 'none';
+      tbody.innerHTML = domains.map((d, i) => `
+        <tr>
+          <td><input type="text" value="${d.domain || ''}" placeholder="example.com" onchange="updateDomain(${i},'domain',this.value)" style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:4px;"></td>
+          <td><input type="text" value="${d.rr || '@'}" placeholder="@" onchange="updateDomain(${i},'rr',this.value)" style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:4px;"></td>
+          <td>
+            <select onchange="updateDomain(${i},'type',this.value)" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;">
+              <option value="">自动</option>
+              <option value="A" ${d.type==='A'?'selected':''}>A (IPv4)</option>
+              <option value="AAAA" ${d.type==='AAAA'?'selected':''}>AAAA (IPv6)</option>
+            </select>
+          </td>
+          <td>
+            <label class="switch">
+              <input type="checkbox" ${d.enabled!==false?'checked':''} onchange="updateDomain(${i},'enabled',this.checked)">
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td>
+            <button class="btn btn-danger btn-sm" onclick="removeDomain(${i})">删除</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function addDomainRow() {
+      domains.push({ domain: '', rr: '@', type: '', enabled: true });
+      renderDomains();
+    }
+
+    function updateDomain(index, key, value) {
+      domains[index][key] = value;
+    }
+
+    function removeDomain(index) {
+      domains.splice(index, 1);
+      renderDomains();
+    }
+
+    async function saveDomains() {
+      const valid = domains.filter(d => d.domain.trim());
+      const res = await api('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domains: valid })
+      });
+      if (res.ok) { toast('域名配置已保存'); loadConfig(); }
+      else toast('保存失败: ' + res.error, 'error');
+    }
+
+    async function manualSync() {
+      const btn = document.getElementById('syncBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ 同步中...';
+      const res = await api('/api/sync', { method: 'POST' });
+      btn.disabled = false;
+      btn.textContent = '🔄 立即同步';
+      const div = document.getElementById('syncResult');
+      if (res.ok && res.results) {
+        div.innerHTML = res.results.map(r => {
+          let cls = r.action === 'error' ? 'badge-danger' : r.action === 'updated' ? 'badge-warning' : r.action === 'created' ? 'badge-success' : 'badge-info';
+          return `<span class="badge ${cls}" style="margin:2px;">${r.rr}.${r.domain} (${r.type}): ${r.action} - ${r.ip||''} ${r.error||''}</span>`;
+        }).join('<br>');
+        refreshStatus();
+      } else {
+        div.innerHTML = `<span class="badge badge-danger">${res.error||'同步失败'}</span>`;
+      }
+      refreshLogs();
+    }
+
+    async function refreshLogs() {
+      const logs = await api('/api/logs?lines=50');
+      document.getElementById('logViewer').textContent = logs.length ? logs.join('\n') : '暂无日志';
+    }
+
+    loadConfig();
+    setInterval(refreshStatus, 10000);
+    setInterval(refreshLogs, 30000);
+  </script>
+</body>
+</html>

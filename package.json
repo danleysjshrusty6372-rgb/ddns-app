@@ -1,0 +1,17 @@
+{
+  "name": "ddns-app",
+  "version": "1.0.0",
+  "description": "轻量级 DDNS 动态域名解析服务，支持 IPv4/IPv6，兼容阿里云 DNS",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-cron": "^3.0.3"
+  },
+  "keywords": ["ddns", "aliyun", "dns", "ipv4", "ipv6"],
+  "license": "MIT"
+}
