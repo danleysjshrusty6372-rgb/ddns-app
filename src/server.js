@@ -81,6 +81,13 @@ app.post('/api/sync', async (req, res) => {
     return res.json({ ok: false, error: '同步正在进行中' });
   }
   syncStatus.running = true;
+
+  // Safety timeout to reset running state if it gets stuck
+  const timeout = setTimeout(() => {
+    syncStatus.running = false;
+    log('[DDNS] Sync timeout, reset running state');
+  }, 60000);
+
   try {
     const results = await syncAll(config);
     syncStatus.lastSync = new Date().toISOString();
@@ -90,6 +97,7 @@ app.post('/api/sync', async (req, res) => {
     log(`[DDNS] Sync error: ${e.message}`);
     res.json({ ok: false, error: e.message });
   } finally {
+    clearTimeout(timeout);
     syncStatus.running = false;
   }
 });
