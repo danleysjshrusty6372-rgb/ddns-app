@@ -102,6 +102,18 @@ app.get('/api/logs', (req, res) => {
   res.json(getLogs(lines));
 });
 
+/** Clear logs */
+app.post('/api/logs/clear', (req, res) => {
+  const fs = require('fs');
+  const { LOG_FILE } = require('./config');
+  try {
+    fs.writeFileSync(LOG_FILE, '', 'utf-8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
 // ==================== Cron ====================
 
 function restartCron() {

@@ -73,4 +73,4 @@ function getLogs(lines = 100) {
   return [];
 }
 
-module.exports = { loadConfig, saveConfig, log, getLogs, CONFIG_FILE };
+module.exports = { loadConfig, saveConfig, log, getLogs, CONFIG_FILE, LOG_FILE };

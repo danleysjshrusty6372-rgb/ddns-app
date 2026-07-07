@@ -20,7 +20,7 @@
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-    .container { max-width: 960px; margin: 0 auto; padding: 20px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
     h1 { font-size: 22px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
     h1 .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); }
     h1 .dot.off { background: var(--danger); }
@@ -47,16 +47,30 @@
     th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
     th { font-weight: 600; color: var(--text-secondary); font-size: 13px; }
     tr:hover { background: #f5f7fa; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 500; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 500; margin: 3px; }
     .badge-success { background: #e1f3d8; color: var(--success); }
     .badge-warning { background: #faecd8; color: var(--warning); }
     .badge-danger { background: #fde2e2; color: var(--danger); }
     .badge-info { background: #e6f0fb; color: var(--primary); }
-    .log-viewer { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 12px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; line-height: 1.6; }
+    .log-viewer { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace; font-size: 13px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; line-height: 1.8; }
+    .log-viewer .log-error { color: #f56c6c; }
+    .log-viewer .log-success { color: #67c23a; }
+    .log-viewer .log-info { color: #909399; }
+    .sync-result-panel { background: #fafafa; border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin-top: 12px; }
+    .sync-result-item { padding: 10px 0; border-bottom: 1px solid #eee; }
+    .sync-result-item:last-child { border-bottom: none; }
+    .sync-result-item .domain { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .sync-result-item .detail { font-size: 13px; color: var(--text-secondary); }
+    .sync-result-item .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+    .status-created { background: #e1f3d8; color: var(--success); }
+    .status-updated { background: #faecd8; color: var(--warning); }
+    .status-unchanged { background: #e6f0fb; color: var(--primary); }
+    .status-error { background: #fde2e2; color: var(--danger); }
     .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 999; animation: slideIn .3s ease; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     .toast-success { background: var(--success); }
     .toast-error { background: var(--danger); }
+    .toast-warning { background: var(--warning); }
     .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
     .switch input { opacity: 0; width: 0; height: 0; }
     .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #c0c4cc; border-radius: 22px; transition: .3s; }
@@ -67,6 +81,8 @@
     .status-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
     .status-value { font-weight: 600; font-family: monospace; }
     .empty { text-align: center; color: var(--text-secondary); padding: 30px 0; font-size: 14px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
     @media (max-width: 640px) { .row { flex-direction: column; } .form-group { min-width: 100%; } }
   </style>
 </head>
@@ -94,6 +110,7 @@
         <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
         <button class="btn btn-default" onclick="testConnection()">🔍 测试连接</button>
       </div>
+      <div id="testResult" style="margin-top:10px;"></div>
     </div>
 
     <!-- IPv4/IPv6 设置 -->
@@ -114,9 +131,9 @@
         </div>
       </div>
       <div class="status-row">
-        <div class="status-item">IPv4: <span class="status-value" id="ipv4Addr">-</span></div>
-        <div class="status-item">IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
-        <button class="btn btn-sm btn-default" onclick="refreshIPs()">🔄 刷新</button>
+        <div class="status-item">当前 IPv4: <span class="status-value" id="ipv4Addr">-</span></div>
+        <div class="status-item">当前 IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
+        <button class="btn btn-sm btn-default" onclick="refreshIPs()">🔄 刷新IP</button>
       </div>
     </div>
 
@@ -137,21 +154,31 @@
       <button class="btn btn-success" onclick="saveDomains()" style="margin-top:12px;">💾 保存域名</button>
     </div>
 
-    <!-- 手动同步 -->
-    <div class="card">
-      <div class="card-header">
-        <h2>⚡ 同步操作</h2>
-        <span style="font-size:13px;color:var(--text-secondary);" id="lastSync">上次同步: -</span>
+    <!-- 同步操作与结果 -->
+    <div class="two-col">
+      <div class="card">
+        <div class="card-header">
+          <h2>⚡ 同步操作</h2>
+          <span style="font-size:13px;color:var(--text-secondary);" id="lastSync">上次同步: -</span>
+        </div>
+        <button class="btn btn-primary" onclick="manualSync()" id="syncBtn">🔄 立即同步</button>
       </div>
-      <button class="btn btn-primary" onclick="manualSync()" id="syncBtn">🔄 立即同步</button>
-      <div id="syncResult" style="margin-top:12px;"></div>
+      <div class="card">
+        <h2>📊 同步结果</h2>
+        <div id="syncResult" class="sync-result-panel">
+          <div class="empty">点击「立即同步」查看结果</div>
+        </div>
+      </div>
     </div>
 
     <!-- 运行日志 -->
     <div class="card">
       <div class="card-header">
         <h2>📜 运行日志</h2>
-        <button class="btn btn-sm btn-default" onclick="refreshLogs()">🔄 刷新</button>
+        <div>
+          <button class="btn btn-sm btn-default" onclick="refreshLogs()">🔄 刷新日志</button>
+          <button class="btn btn-sm btn-danger" onclick="clearLogs()" style="margin-left:4px;">🗑️ 清空</button>
+        </div>
       </div>
       <div class="log-viewer" id="logViewer">加载中...</div>
     </div>
@@ -171,7 +198,7 @@
       el.className = `toast toast-${type}`;
       el.textContent = msg;
       document.body.appendChild(el);
-      setTimeout(() => el.remove(), 3000);
+      setTimeout(() => el.remove(), 4000);
     }
 
     async function loadConfig() {
@@ -220,9 +247,16 @@
     }
 
     async function testConnection() {
+      const div = document.getElementById('testResult');
+      div.innerHTML = '<span class="badge badge-info">测试中...</span>';
       const res = await api('/api/test-connection', { method: 'POST' });
-      if (res.ok) toast('连接成功 ✅');
-      else toast('连接失败: ' + res.error, 'error');
+      if (res.ok) {
+        div.innerHTML = '<span class="badge badge-success">✅ 连接成功</span>';
+        toast('阿里云连接成功');
+      } else {
+        div.innerHTML = `<span class="badge badge-danger">❌ ${res.error}</span>`;
+        toast('连接失败: ' + res.error, 'error');
+      }
     }
 
     async function refreshIPs() {
@@ -302,30 +336,76 @@
       const btn = document.getElementById('syncBtn');
       btn.disabled = true;
       btn.textContent = '⏳ 同步中...';
+      const div = document.getElementById('syncResult');
+      div.innerHTML = '<div class="empty">正在同步，请稍候...</div>';
+
       const res = await api('/api/sync', { method: 'POST' });
       btn.disabled = false;
       btn.textContent = '🔄 立即同步';
-      const div = document.getElementById('syncResult');
+
       if (res.ok && res.results) {
         div.innerHTML = res.results.map(r => {
-          let cls = r.action === 'error' ? 'badge-danger' : r.action === 'updated' ? 'badge-warning' : r.action === 'created' ? 'badge-success' : 'badge-info';
-          return `<span class="badge ${cls}" style="margin:2px;">${r.rr}.${r.domain} (${r.type}): ${r.action} - ${r.ip||''} ${r.error||''}</span>`;
-        }).join('<br>');
-        refreshStatus();
+          const statusClass = r.action === 'error' ? 'status-error' :
+                             r.action === 'updated' ? 'status-updated' :
+                             r.action === 'created' ? 'status-created' : 'status-unchanged';
+          const statusText = r.action === 'error' ? '失败' :
+                            r.action === 'updated' ? '已更新' :
+                            r.action === 'created' ? '已创建' : '未变更';
+          const ipInfo = r.ip ? `IP: ${r.ip}` : '';
+          const oldIpInfo = r.oldIP ? ` (原: ${r.oldIP})` : '';
+          const errorInfo = r.error ? `<br><span style="color:var(--danger);font-size:12px;">错误: ${r.error}</span>` : '';
+
+          return `<div class="sync-result-item">
+            <div class="domain">${r.rr}.${r.domain} <span class="status ${statusClass}">${statusText}</span></div>
+            <div class="detail">${r.type} 记录 ${ipInfo}${oldIpInfo}${errorInfo}</div>
+          </div>`;
+        }).join('');
+
+        const hasError = res.results.some(r => r.action === 'error');
+        if (hasError) {
+          toast('部分同步失败，请查看详情', 'warning');
+        } else {
+          toast('同步完成');
+        }
       } else {
         div.innerHTML = `<span class="badge badge-danger">${res.error||'同步失败'}</span>`;
+        toast('同步失败: ' + (res.error || ''), 'error');
       }
+      refreshStatus();
       refreshLogs();
     }
 
     async function refreshLogs() {
-      const logs = await api('/api/logs?lines=50');
-      document.getElementById('logViewer').textContent = logs.length ? logs.join('\n') : '暂无日志';
+      const logs = await api('/api/logs?lines=100');
+      const viewer = document.getElementById('logViewer');
+      if (logs.length) {
+        viewer.innerHTML = logs.map(line => {
+          if (line.includes('error') || line.includes('Error') || line.includes('失败')) {
+            return `<span class="log-error">${line}</span>`;
+          } else if (line.includes('updated') || line.includes('created') || line.includes('成功')) {
+            return `<span class="log-success">${line}</span>`;
+          } else if (line.includes('[DDNS]')) {
+            return `<span class="log-info">${line}</span>`;
+          }
+          return line;
+        }).join('\n');
+        viewer.scrollTop = viewer.scrollHeight;
+      } else {
+        viewer.textContent = '暂无日志';
+      }
+    }
+
+    async function clearLogs() {
+      if (confirm('确定要清空日志吗？')) {
+        await api('/api/logs/clear', { method: 'POST' });
+        refreshLogs();
+        toast('日志已清空');
+      }
     }
 
     loadConfig();
     setInterval(refreshStatus, 10000);
-    setInterval(refreshLogs, 30000);
+    setInterval(refreshLogs, 15000);
   </script>
 </body>
 </html>
