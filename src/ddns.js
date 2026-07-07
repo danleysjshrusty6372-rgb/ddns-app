@@ -7,7 +7,7 @@ const { log } = require('./config');
 /**
  * Get public IP address from an API endpoint using curl (more reliable on Windows)
  */
-function fetchIP(url) {
+function fetchIP(url, expectV6 = false) {
   return new Promise((resolve, reject) => {
     const timeout = url.includes('ipv6') || url.includes('v6') ? 15000 : 10000;
     const cmd = `curl -s --max-time ${timeout / 1000} "${url}"`;
@@ -20,6 +20,11 @@ function fetchIP(url) {
       const ip = stdout.trim();
       // Validate IP format
       if (/^[\d.:a-fA-F]+$/.test(ip) && ip.length < 45) {
+        // If expecting IPv6, ensure the result contains ':'
+        if (expectV6 && !ip.includes(':')) {
+          reject(new Error(`Expected IPv6 but got IPv4: ${ip}`));
+          return;
+        }
         resolve(ip);
       } else {
         reject(new Error(`Invalid IP returned: ${ip}`));
@@ -64,16 +69,14 @@ async function getIPv6(apiUrl = 'https://api6.ipify.org') {
     'https://api6.ipify.org',
     'https://v6.ident.me',
     'https://ipv6.icanhazip.com',
-    'https://ifconfig.co',
-    'https://icanhazip.com',
-    'https://checkip.amazonaws.com'
+    'https://api6.ipify.org/?format=json'
   ];
   if (apiUrl && !urls.includes(apiUrl)) {
     urls.unshift(apiUrl);
   }
   for (const url of urls) {
     try {
-      return await fetchIP(url);
+      return await fetchIP(url, true);
     } catch (e) {
       // try next
     }
