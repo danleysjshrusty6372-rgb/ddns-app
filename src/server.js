@@ -58,19 +58,10 @@ app.post('/api/test-connection', async (req, res) => {
   }
 });
 
-/** Get current IPs */
+/** Get current IPs and NAT detection */
 app.get('/api/current-ips', async (req, res) => {
-  const result = { ipv4: null, ipv6: null };
-  try {
-    result.ipv4 = await getIPv4(config.ipv4_api);
-  } catch (e) {
-    result.ipv4_error = e.message;
-  }
-  try {
-    result.ipv6 = await getIPv6(config.ipv6_api);
-  } catch (e) {
-    result.ipv6_error = e.message;
-  }
+  const { detectNAT } = require('./ddns');
+  const result = await detectNAT();
   res.json(result);
 });
 

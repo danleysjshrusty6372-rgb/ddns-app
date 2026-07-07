@@ -82,6 +82,29 @@ async function getIPv6(apiUrl = 'https://api6.ipify.org') {
 }
 
 /**
+ * Detect NAT type and warn if no public IP
+ */
+async function detectNAT() {
+  try {
+    const ipv4 = await getIPv4();
+    const ipv6 = await getIPv6();
+
+    // Check if IPv4 is private (NAT)
+    const isPrivateIPv4 = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ipv4);
+
+    return {
+      ipv4,
+      ipv6,
+      hasPublicIPv4: !isPrivateIPv4,
+      hasPublicIPv6: !!ipv6,
+      warning: isPrivateIPv4 ? 'IPv4 是内网地址，即使解析成功也无法从外网访问' : null
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+/**
  * Sync DDNS for a single domain config
  */
 async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Api, ipv6Api) {
@@ -114,20 +137,20 @@ async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Ap
 
       if (existing) {
         if (existing.Value === currentIP) {
-          log(`[${domain}] ${rr}.${domain} (${recordType}) unchanged: ${currentIP}`);
+          log(`[OK] ${rr}.${domain} (${recordType}) unchanged: ${currentIP}`);
           results.push({ domain, rr, type: recordType, action: 'unchanged', ip: currentIP });
         } else {
           await client.updateDomainRecord(existing.RecordId, rr, recordType, currentIP);
-          log(`[${domain}] ${rr}.${domain} (${recordType}) updated: ${existing.Value} -> ${currentIP}`);
+          log(`[OK] ${rr}.${domain} (${recordType}) updated: ${existing.Value} -> ${currentIP}`);
           results.push({ domain, rr, type: recordType, action: 'updated', ip: currentIP, oldIP: existing.Value });
         }
       } else {
         await client.addDomainRecord(domain, rr, recordType, currentIP);
-        log(`[${domain}] ${rr}.${domain} (${recordType}) created: ${currentIP}`);
+        log(`[OK] ${rr}.${domain} (${recordType}) created: ${currentIP}`);
         results.push({ domain, rr, type: recordType, action: 'created', ip: currentIP });
       }
     } catch (e) {
-      log(`[${domain}] ${rr}.${domain} (${recordType}) error: ${e.message}`);
+      log(`[ERROR] ${rr}.${domain} (${recordType}): ${e.message}`);
       results.push({ domain, rr, type: recordType, action: 'error', error: e.message });
     }
   }

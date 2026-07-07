@@ -93,10 +93,19 @@
       <span class="dot" id="statusDot"></span>
     </h1>
 
-    <!-- 阿里云配置 -->
+    <!-- 云厂商配置 -->
     <div class="card">
-      <h2>🔑 阿里云 API 配置</h2>
+      <h2>🔑 云厂商 API 配置</h2>
       <div class="row">
+        <div class="form-group">
+          <label>云厂商</label>
+          <select id="provider" onchange="updateProvider()">
+            <option value="aliyun">阿里云</option>
+            <option value="tencent" disabled>腾讯云（开发中）</option>
+            <option value="huawei" disabled>华为云（开发中）</option>
+            <option value="cloudflare" disabled>Cloudflare（开发中）</option>
+          </select>
+        </div>
         <div class="form-group">
           <label>AccessKey ID</label>
           <input type="text" id="akId" placeholder="输入 AccessKey ID" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
@@ -147,6 +156,7 @@
         <div class="status-item">当前 IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
         <button class="btn btn-sm btn-default" onclick="refreshIPs()">🔄 刷新IP</button>
       </div>
+      <div id="natWarning" style="margin-top:10px;display:none;"></div>
     </div>
 
     <!-- 域名管理 -->
@@ -307,6 +317,18 @@
       const data = await api('/api/current-ips');
       document.getElementById('ipv4Addr').textContent = data.ipv4 || 'N/A';
       document.getElementById('ipv6Addr').textContent = data.ipv6 || 'N/A';
+
+      // NAT detection warning
+      const warningDiv = document.getElementById('natWarning');
+      if (data.warning) {
+        warningDiv.innerHTML = `<div class="badge badge-warning">⚠️ ${data.warning}</div>`;
+        warningDiv.style.display = 'block';
+      } else if (data.hasPublicIPv4 || data.hasPublicIPv6) {
+        warningDiv.innerHTML = `<div class="badge badge-success">✅ 公网 IP 可用</div>`;
+        warningDiv.style.display = 'block';
+      } else {
+        warningDiv.style.display = 'none';
+      }
     }
 
     async function refreshStatus() {
@@ -424,15 +446,16 @@
       const viewer = document.getElementById('logViewer');
       if (logs.length) {
         viewer.innerHTML = logs.map(line => {
-          if (line.includes('error') || line.includes('Error') || line.includes('失败')) {
+          // Only show OK and ERROR lines
+          if (line.includes('[ERROR]')) {
             return `<span class="log-error">${line}</span>`;
-          } else if (line.includes('updated') || line.includes('created') || line.includes('成功')) {
+          } else if (line.includes('[OK]')) {
             return `<span class="log-success">${line}</span>`;
           } else if (line.includes('[DDNS]')) {
             return `<span class="log-info">${line}</span>`;
           }
-          return line;
-        }).join('\n');
+          return null;
+        }).filter(line => line !== null).join('\n');
         viewer.scrollTop = viewer.scrollHeight;
       } else {
         viewer.textContent = '暂无日志';
