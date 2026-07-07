@@ -103,7 +103,10 @@
         </div>
         <div class="form-group">
           <label>AccessKey Secret</label>
-          <input type="password" id="akSecret" placeholder="输入 AccessKey Secret">
+          <div style="position:relative;">
+            <input type="password" id="akSecret" placeholder="输入 AccessKey Secret" style="padding-right:40px;">
+            <button type="button" onclick="toggleSecret()" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;padding:4px;">👁️</button>
+          </div>
         </div>
       </div>
       <div style="display:flex;gap:8px;">
@@ -201,6 +204,18 @@
       setTimeout(() => el.remove(), 4000);
     }
 
+    function toggleSecret() {
+      const input = document.getElementById('akSecret');
+      const btn = input.nextElementSibling;
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁️';
+      }
+    }
+
     async function loadConfig() {
       config = await api('/api/config');
       document.getElementById('akId').value = config.aliyun?.accessKeyId || '';
@@ -224,14 +239,9 @@
         return;
       }
 
-      // Validate AccessKey format
-      if (!/^LTAI[A-Za-z0-9]{12,20}$/.test(akId)) {
-        toast('AccessKey ID 格式不正确，应以 LTAI 开头', 'error');
-        return;
-      }
-
-      if (akSecret.length < 20 || akSecret.length > 40 || /[^A-Za-z0-9]/.test(akSecret)) {
-        toast('AccessKey Secret 格式不正确，应为20-40位字母数字', 'error');
+      // Basic length validation
+      if (akId.length < 10 || akSecret.length < 10) {
+        toast('AccessKey ID 和 Secret 长度不足', 'error');
         return;
       }
 
