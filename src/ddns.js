@@ -10,7 +10,7 @@ const { log } = require('./config');
 function fetchIP(url, expectV6 = false) {
   return new Promise((resolve, reject) => {
     const timeout = url.includes('ipv6') || url.includes('v6') ? 15000 : 10000;
-    const cmd = `curl -s --max-time ${timeout / 1000} "${url}"`;
+    const cmd = `curl -sk --noproxy all --max-time ${timeout / 1000} "${url}"`;
 
     exec(cmd, { timeout: timeout + 2000 }, (error, stdout, stderr) => {
       if (error) {
@@ -192,4 +192,4 @@ async function syncAll(config) {
   return allResults;
 }
 
-module.exports = { getIPv4, getIPv6, syncAll, fetchIP };
+module.exports = { getIPv4, getIPv6, syncAll, fetchIP, detectNAT };
