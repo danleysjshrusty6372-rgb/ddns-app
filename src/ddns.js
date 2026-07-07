@@ -1,29 +1,30 @@
 const https = require('https');
 const http = require('http');
+const { exec } = require('child_process');
 const AliyunDNS = require('./aliyun');
 const { log } = require('./config');
 
 /**
- * Get public IP address from an API endpoint
+ * Get public IP address from an API endpoint using curl (more reliable on Windows)
  */
 function fetchIP(url) {
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, { timeout: 10000 }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        const ip = data.trim();
-        // Validate IP format
-        if (/^[\d.:a-fA-F]+$/.test(ip) && ip.length < 45) {
-          resolve(ip);
-        } else {
-          reject(new Error(`Invalid IP returned: ${ip}`));
-        }
-      });
+    const timeout = url.includes('ipv6') || url.includes('v6') ? 15000 : 10000;
+    const cmd = `curl -s --max-time ${timeout / 1000} "${url}"`;
+
+    exec(cmd, { timeout: timeout + 2000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`curl failed: ${error.message}`));
+        return;
+      }
+      const ip = stdout.trim();
+      // Validate IP format
+      if (/^[\d.:a-fA-F]+$/.test(ip) && ip.length < 45) {
+        resolve(ip);
+      } else {
+        reject(new Error(`Invalid IP returned: ${ip}`));
+      }
     });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('IP fetch timeout')); });
   });
 }
 
