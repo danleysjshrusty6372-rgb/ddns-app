@@ -6,30 +6,11 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-packager . DDNS-Service --platform=win32 --arch=x64 --out=../dist --overwrite --icon=icon.ico"
-  },
-  "build": {
-    "appId": "com.ddns.app",
-    "productName": "DDNS Service",
-    "directories": {
-      "output": "../dist"
-    },
-    "files": [
-      "main.js",
-      "icon.png",
-      "icon.ico",
-      "../src/**/*",
-      "../public/**/*",
-      "../package.json"
-    ],
-    "win": {
-      "target": "dir",
-      "icon": "icon.ico"
-    }
+    "prebuild:win": "xcopy /E /I /Y ..\\src src && xcopy /E /I /Y ..\\public public",
+    "build:win": "electron-packager . DDNS-Service --platform=win32 --arch=x64 --out=../dist --overwrite --icon=icon.ico --ignore=\"(node_modules/electron.*|node_modules/.*-builder.*|node_modules/ajv.*)\""
   },
   "devDependencies": {
     "electron": "^28.3.3",
-    "electron-builder": "^24.0.0",
     "electron-packager": "^17.1.2"
   }
 }

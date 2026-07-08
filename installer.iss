@@ -8,7 +8,6 @@ DefaultGroupName=DDNS Service
 OutputDir=dist
 OutputBaseFilename=DDNS-Service-Setup-v4.2.0
 SetupIconFile=electron\icon.ico
-UninstallIconFile=electron\icon.ico
 Compression=lzma
 SolidCompression=yes
 PrivilegesRequired=admin
@@ -36,4 +35,4 @@ Filename: "{app}\DDNS-Service.exe"; Description: "启动 DDNS Service"; Flags: n
 
 [UninstallRun]
 ; Ensure the app is closed before uninstall
-Filename: "{cmd}"; Parameters: "/C taskkill /F /IM DDNS-Service.exe 2>nul"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/C taskkill /F /IM DDNS-Service.exe 2>nul"; Flags: runhidden; RunOnceId: "KillDDNSProcess"
