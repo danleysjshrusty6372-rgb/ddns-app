@@ -1,6 +1,6 @@
 # DDNS 动态域名解析服务
 
-官网（含相关介绍与解决方案）：ddns.jianhx.com
+官网（含相关介绍与解决方案）：http://ddns.jianhx.com
 
 
 轻量级 DDNS 应用，支持 IPv4/IPv6 动态解析，兼容阿里云、腾讯云、华为云、Cloudflare 四大云厂商。内置 Web 管理面板，一键安装，开机自启，后台静默运行。
