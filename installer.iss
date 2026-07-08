@@ -1,11 +1,13 @@
 [Setup]
 AppName=DDNS Service
-AppVersion=4.0.0
+AppVersion=4.2.0
 AppPublisher=DDNS Team
 DefaultDirName={pf}\DDNS Service
 DefaultGroupName=DDNS Service
 OutputDir=dist
 OutputBaseFilename=DDNS-Service-Setup
+SetupIconFile=electron\icon.ico
+UninstallIconFile=electron\icon.ico
 Compression=lzma
 SolidCompression=yes
 

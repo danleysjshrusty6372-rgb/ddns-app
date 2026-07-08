@@ -3,6 +3,7 @@ const path = require('path');
 const { loadConfig, saveConfig, log, getLogs } = require('./config');
 const { getIPv4, getIPv6, syncAll } = require('./ddns');
 const { createProvider } = require('./providers');
+const { getStunServerList } = require('./stun');
 
 const app = express();
 app.use(express.json());
@@ -75,8 +76,14 @@ app.post('/api/test-connection', async (req, res) => {
 /** Get current IPs and NAT detection */
 app.get('/api/current-ips', async (req, res) => {
   const { detectNAT } = require('./ddns');
-  const result = await detectNAT();
+  const serverIds = req.query.servers ? req.query.servers.split(',') : undefined;
+  const result = await detectNAT(serverIds);
   res.json(result);
+});
+
+/** Get available STUN servers */
+app.get('/api/stun-servers', (req, res) => {
+  res.json(getStunServerList());
 });
 
 /** Manual sync trigger */

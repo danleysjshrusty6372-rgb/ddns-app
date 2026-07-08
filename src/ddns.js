@@ -3,6 +3,7 @@ const http = require('http');
 const { exec } = require('child_process');
 const { createProvider } = require('./providers');
 const { log } = require('./config');
+const { detectNatType, findServersByIds } = require('./stun');
 
 /**
  * Get public IP address from an API endpoint using curl (more reliable on Windows)
@@ -87,24 +88,50 @@ async function getIPv6(apiUrl = 'https://api6.ipify.org') {
 
 /**
  * Detect NAT type and warn if no public IP
+ * @param {string[]} [serverIds] - Optional list of STUN server IDs to use
  */
-async function detectNAT() {
+async function detectNAT(serverIds) {
   try {
     const ipv4 = await getIPv4();
-    const ipv6 = await getIPv6();
+    const ipv6Promise = getIPv6().catch(() => null);
 
-    // Check if IPv4 is private (NAT)
-    const isPrivateIPv4 = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/.test(ipv4);
+    const customServers = serverIds ? findServersByIds(serverIds) : undefined;
+    const natResult = await detectNatType(customServers.length > 0 ? customServers : undefined);
+    const ipv6 = await ipv6Promise;
 
     return {
       ipv4,
-      ipv6,
-      hasPublicIPv4: !isPrivateIPv4,
+      ipv6: ipv6 || null,
+      hasPublicIPv4: natResult.ddnsUsable,
       hasPublicIPv6: !!ipv6,
-      warning: isPrivateIPv4 ? 'IPv4 是内网地址，即使解析成功也无法从外网访问' : null
+      nat: {
+        type: natResult.type,
+        name: natResult.name,
+        description: natResult.description,
+        localIP: natResult.localIP,
+        mappedIP: natResult.mappedIP,
+        mappedPort: natResult.mappedPort,
+        server: natResult.server,
+        serversQueried: natResult.serversQueried,
+        serversResponded: natResult.serversResponded
+      },
+      warning: getNatWarning(natResult.type)
     };
   } catch (e) {
     return { error: e.message };
+  }
+}
+
+function getNatWarning(natType) {
+  switch (natType) {
+    case 'NAT0':
+      return null;
+    case 'NAT1':
+      return null;
+    case 'NAT4':
+      return '检测到对称型 NAT (Symmetric NAT)，不同 STUN 服务器返回不同映射，DDNS 可能无法正常工作，即使 DNS 解析成功也可能无法从外网访问';
+    default:
+      return 'NAT 类型未知';
   }
 }
 

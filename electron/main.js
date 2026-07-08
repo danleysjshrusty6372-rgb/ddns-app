@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 
 let mainWindow = null;
@@ -26,18 +27,28 @@ function startServer() {
   });
 }
 
+function getIconPath() {
+  const pngPath = path.join(__dirname, 'icon.png');
+  if (fs.existsSync(pngPath) && fs.statSync(pngPath).size > 0) {
+    return pngPath;
+  }
+  return null;
+}
+
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const iconPath = getIconPath();
+  const windowOptions = {
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
     }
-  });
+  };
+  if (iconPath) windowOptions.icon = iconPath;
+  mainWindow = new BrowserWindow(windowOptions);
 
   // Wait for server to start
   setTimeout(() => {
@@ -57,7 +68,10 @@ function createWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, 'icon.png'));
+  const iconPath = getIconPath();
+  if (!iconPath) return;
+  const icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) return;
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
 
   const contextMenu = Menu.buildFromTemplate([

@@ -1,12 +1,12 @@
 {
   "name": "ddns-app",
-  "version": "4.0.0",
+  "version": "4.2.0",
   "description": "DDNS 动态域名解析服务客户端",
   "author": "DDNS Team",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-packager . DDNS-Service --platform=win32 --arch=x64 --out=../dist --overwrite"
+    "build:win": "electron-packager . DDNS-Service --platform=win32 --arch=x64 --out=../dist --overwrite --icon=icon.ico"
   },
   "build": {
     "appId": "com.ddns.app",
@@ -16,12 +16,15 @@
     },
     "files": [
       "main.js",
+      "icon.png",
+      "icon.ico",
       "../src/**/*",
       "../public/**/*",
       "../package.json"
     ],
     "win": {
-      "target": "dir"
+      "target": "dir",
+      "icon": "icon.ico"
     }
   },
   "devDependencies": {

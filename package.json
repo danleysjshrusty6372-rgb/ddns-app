@@ -1,6 +1,6 @@
 {
   "name": "ddns-app",
-  "version": "4.0.0",
+  "version": "4.2.0",
   "description": "轻量级 DDNS 动态域名解析服务，支持 IPv4/IPv6，兼容阿里云 DNS",
   "main": "src/server.js",
   "type": "commonjs",
@@ -17,7 +17,8 @@
   },
   "devDependencies": {
     "electron": "^28.3.3",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "sharp": "^0.35.3"
   },
   "keywords": [
     "ddns",
