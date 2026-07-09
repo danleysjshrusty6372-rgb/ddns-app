@@ -4,6 +4,9 @@
   "description": "DDNS 动态域名解析服务客户端",
   "author": "DDNS Team",
   "main": "main.js",
+  "dependencies": {
+    "express": "^4.21.0"
+  },
   "scripts": {
     "start": "electron .",
     "prebuild:win": "xcopy /E /I /Y ..\\src src && xcopy /E /I /Y ..\\public public",

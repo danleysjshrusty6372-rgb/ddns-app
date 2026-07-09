@@ -28,9 +28,10 @@ if (!gotLock) {
 function startServer() {
   // src/ and public/ are bundled alongside main.js in resources/app/
   const serverPath = path.join(__dirname, 'src', 'server.js');
-  serverProcess = spawn('node', [serverPath], {
+  serverProcess = spawn(process.execPath, [serverPath], {
     cwd: path.join(__dirname, '..'), // resources/ → so ../data resolves correctly
-    stdio: 'pipe'
+    stdio: 'pipe',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
   });
 
   serverProcess.stdout.on('data', (data) => {
