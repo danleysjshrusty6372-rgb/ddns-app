@@ -1,7 +1,125 @@
-# DDNS 动态域名解析服务
+# DDNS Dynamic DNS Service · 动态域名解析
+
+[![Release](https://img.shields.io/github/v/release/danleysjshrusty6372-rgb/ddns-app)](https://github.com/danleysjshrusty6372-rgb/ddns-app/releases)
+[![License](https://img.shields.io/github/license/danleysjshrusty6372-rgb/ddns-app)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/danleysjshrusty6372-rgb/ddns-app/releases)
+
+> 中文介绍见下方 | [Skip to Chinese ↓](#功能特性)
+
+**A lightweight DDNS (Dynamic DNS) desktop application** that keeps your domains pointed at your ever-changing home IP — automatically. Supports **Alibaba Cloud**, **Tencent Cloud**, **Huawei Cloud**, and **Cloudflare**. Ships with a built-in web dashboard, one-click Windows installer, auto-start on boot, and silent background operation via system tray.
+
+Website (Chinese): http://ddns.jianhx.com
+
+## Features
+
+### Multi-Cloud DNS Providers
+- **Alibaba Cloud DNS** — AccessKey ID + Secret
+- **Tencent Cloud DNSPod** — SecretId + SecretKey
+- **Huawei Cloud DNS** — AK + SK
+- **Cloudflare** — API Token
+- All providers use **native API signing — zero SDK dependencies**
+
+### IP Detection
+- **IPv4 / IPv6 dual-stack** — independently toggleable
+- **8+ fallback services** — ipify, ident.me, ifconfig.me, icanhazip, and more
+- **curl mode** — compatible with corporate proxies and Windows network environments
+
+### NAT Type Detection (STUN)
+- Self-implemented STUN client (RFC 5389), **zero third-party libraries**
+- 10 public STUN servers (Tencent, Xiaomi, Google, Cloudflare, Twilio, etc.)
+- Auto-classifies: NAT0 (Public) → NAT1 (Full Cone) → NAT4 (Symmetric)
+- Warns you when DDNS won't work (symmetric NAT)
+
+### Smart Sync
+- Configurable polling interval (30–86400 seconds, default 5 min)
+- First sync on startup
+- **Only updates DNS records when your IP actually changes** — minimizes API calls
+
+### Web Dashboard
+- **Vanilla HTML/CSS/JS — zero framework dependencies**
+- Provider switching, credential show/hide toggle, connection test
+- Domain CRUD, record type selection (A / AAAA / Auto)
+- NAT type detection panel with selectable STUN server
+- Real-time sync results with syntax-highlighted log viewer
+
+### Electron Desktop Client
+- **System tray resident** — closing the window minimizes to tray
+- Double-click tray icon to open dashboard
+- Right-click menu: Open Panel, View Logs, Open Config Folder, Exit Service
+- **Only "Exit DDNS Service" from the tray menu actually stops the background sync**
+
+## Installation
+
+### Option 1: Installer (Recommended)
+
+1. Download `DDNS-Service-Setup-v4.2.0.exe` from [Releases](https://github.com/danleysjshrusty6372-rgb/ddns-app/releases)
+2. Run the installer — desktop shortcut and auto-start are configured automatically
+3. The app starts immediately and registers `HKCU\...\Run` for boot persistence
+
+### Option 2: Portable (No Install)
+
+1. Download `DDNS-Service-win32-x64.zip` from [Releases](https://github.com/danleysjshrusty6372-rgb/ddns-app/releases)
+2. Extract anywhere and run `DDNS-Service.exe`
+
+### Option 3: From Source
+
+```bash
+git clone https://github.com/danleysjshrusty6372-rgb/ddns-app.git
+cd ddns-app
+npm install
+npm start
+```
+
+Then open http://localhost:3000 in your browser.
+
+## Quick Start
+
+1. **Configure a provider** — Enter your cloud API credentials and click "Test Connection"
+2. **Add a domain** — Your domain name, RR record (`@` for root, `www` for subdomain), record type (A/AAAA/Auto)
+3. **Set sync interval** — Default 300s (5 minutes) is fine for most users
+4. **Click "Sync Now"** — DNS records are created/updated if your IP has changed
+
+## Configuration
+
+Stored in `data/config.json`:
+
+```json
+{
+  "port": 3000,
+  "provider": "aliyun",
+  "credentials": {
+    "aliyun": { "accessKeyId": "", "accessKeySecret": "" },
+    "tencent": { "secretId": "", "secretKey": "" },
+    "huawei": { "ak": "", "sk": "", "region": "cn-north-1" },
+    "cloudflare": { "apiToken": "" }
+  },
+  "domains": [
+    { "domain": "example.com", "rr": "@", "type": "", "enabled": true }
+  ],
+  "interval": 300,
+  "ipv4": true,
+  "ipv6": false
+}
+```
+
+## Tech Stack
+
+- **Backend**: Node.js + Express
+- **Frontend**: Vanilla HTML/CSS/JS (zero framework)
+- **Desktop**: Electron (system tray mode)
+- **DNS APIs**: Native signing for all 4 providers (no SDK bloat)
+- **STUN**: Self-implemented RFC 5389 client
+- **IP Detection**: curl + multi-service fallback
+
+## License
+
+MIT
+
+---
+
+# 中文介绍
 
 官网（含相关介绍与解决方案）：http://ddns.jianhx.com
-
 
 轻量级 DDNS 应用，支持 IPv4/IPv6 动态解析，兼容阿里云、腾讯云、华为云、Cloudflare 四大云厂商。内置 Web 管理面板，一键安装，开机自启，后台静默运行。
 
