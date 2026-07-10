@@ -1,148 +1,146 @@
 const https = require('https');
 const http = require('http');
-const { exec } = require('child_process');
-const { createProvider } = require('./providers');
 const { log } = require('./config');
-const { detectNatType, findServersByIds } = require('./stun');
+const { detectNATType, classifyNAT } = require('./stun');
+
+// ======================= IP Detection (native HTTP, fast) =======================
+
+const IPV4_SERVICES = [
+  'https://api.ipify.org',
+  'https://v4.ident.me',
+  'https://icanhazip.com',
+  'https://checkip.amazonaws.com',
+  'https://ifconfig.me/ip',
+  'https://ipecho.net/plain',
+  'https://myexternalip.com/raw',
+  'https://wtfismyip.com/text'
+];
+
+const IPV6_SERVICES = [
+  'https://api6.ipify.org',
+  'https://v6.ident.me',
+  'https://ipv6.icanhazip.com'
+];
 
 /**
- * Get public IP address from an API endpoint using curl (more reliable on Windows)
+ * Fetch IP using native Node.js http/https with a short timeout.
+ * Much faster than spawning curl — no process overhead, minimal latency.
  */
-function fetchIP(url, expectV6 = false) {
+function fetchIPNative(url, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
-    const timeout = url.includes('ipv6') || url.includes('v6') ? 15000 : 10000;
-    const cmd = `curl -sk --max-time ${timeout / 1000} "${url}"`;
+    const lib = url.startsWith('https') ? https : http;
+    const opts = new URL(url);
 
-    const env = { ...process.env, NO_PROXY: '*' };
-    exec(cmd, { timeout: timeout + 2000, env }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(`curl failed: ${error.message}`));
+    const req = lib.get(url, { timeout: timeoutMs, rejectUnauthorized: false }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode}`));
         return;
       }
-      const ip = stdout.trim();
-      // Validate IP format
-      if (/^[\d.:a-fA-F]+$/.test(ip) && ip.length < 45) {
-        // If expecting IPv6, ensure the result contains ':'
-        if (expectV6 && !ip.includes(':')) {
-          reject(new Error(`Expected IPv6 but got IPv4: ${ip}`));
-          return;
+      let data = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        const ip = data.trim();
+        if (/^[\d.:a-fA-F]+$/.test(ip) && ip.length < 45) {
+          resolve(ip);
+        } else {
+          reject(new Error(`Invalid IP: ${ip}`));
         }
-        resolve(ip);
-      } else {
-        reject(new Error(`Invalid IP returned: ${ip}`));
-      }
+      });
     });
+
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', (e) => reject(e));
   });
 }
 
 /**
- * Get current public IPv4
+ * Race multiple IP services — return the first successful response.
  */
-async function getIPv4(apiUrl = 'https://api.ipify.org') {
-  // Try multiple IPv4 services
-  const urls = [
-    'https://api.ipify.org',
-    'https://v4.ident.me',
-    'https://ifconfig.me/ip',
-    'https://icanhazip.com',
-    'https://ipecho.net/plain',
-    'https://myexternalip.com/raw',
-    'https://wtfismyip.com/text',
-    'https://checkip.amazonaws.com'
-  ];
-  if (apiUrl && !urls.includes(apiUrl)) {
-    urls.unshift(apiUrl);
-  }
-  for (const url of urls) {
-    try {
-      return await fetchIP(url);
-    } catch (e) {
-      // try next
+async function raceIP(urls, expectV6 = false) {
+  const results = await Promise.allSettled(
+    urls.map((u) => fetchIPNative(u, 3000))
+  );
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      const ip = r.value;
+      if (expectV6 && !ip.includes(':')) continue; // skip IPv4 when expecting IPv6
+      return ip;
     }
   }
-  throw new Error('Failed to fetch IPv4 address');
+  throw new Error('All IP services failed');
 }
+
+async function getIPv4() {
+  return raceIP(IPV4_SERVICES);
+}
+
+async function getIPv6() {
+  return raceIP(IPV6_SERVICES, true);
+}
+
+// ======================= NAT Detection (STUN + IP race) =======================
 
 /**
- * Get current public IPv6
+ * Full NAT detection: run STUN analysis and IP detection in parallel.
+ * Returns within ~3 seconds even on slow networks.
  */
-async function getIPv6(apiUrl = 'https://api6.ipify.org') {
-  const urls = [
-    'https://api6.ipify.org',
-    'https://v6.ident.me',
-    'https://ipv6.icanhazip.com',
-    'https://api6.ipify.org/?format=json'
-  ];
-  if (apiUrl && !urls.includes(apiUrl)) {
-    urls.unshift(apiUrl);
+async function detectNAT() {
+  const [stunResult, ipv4Result, ipv6Result] = await Promise.allSettled([
+    detectNATType(),          // STUN — real UDP NAT classification
+    getIPv4().catch(() => null),   // best-effort IPv4
+    getIPv6().catch(() => null)    // best-effort IPv6
+  ]);
+
+  const natInfo = stunResult.status === 'fulfilled'
+    ? stunResult.value
+    : { natType: 'Unknown', description: 'NAT检测超时', ddnsUsable: null };
+
+  const ipv4 = ipv4Result.status === 'fulfilled' ? ipv4Result.value : null;
+  const ipv6 = ipv6Result.status === 'fulfilled' ? ipv6Result.value : null;
+
+  // STUN-detected public IP is authoritative, fall back to HTTP if STUN gave none
+  const publicIP = natInfo.publicIP || ipv4 || ipv6;
+
+  const hasPublicIPv4 = ipv4 ? !isPrivateIP(ipv4) : false;
+  const hasPublicIPv6 = !!ipv6;
+
+  let warning = null;
+  if (!natInfo.ddnsUsable && natInfo.ddnsUsable !== null) {
+    warning = natInfo.description + ' — DDNS 可能无法从外网访问';
+  } else if (!hasPublicIPv4 && !hasPublicIPv6) {
+    warning = '未检测到公网 IP，DDNS 不可用';
   }
-  for (const url of urls) {
-    try {
-      return await fetchIP(url, true);
-    } catch (e) {
-      // try next
-    }
-  }
-  throw new Error('Failed to fetch IPv6 address');
+
+  return {
+    ipv4: ipv4 || null,
+    ipv6: ipv6 || null,
+    publicIP: publicIP || null,
+    natType: natInfo.natType,
+    natDescription: natInfo.description,
+    hasPublicIPv4,
+    hasPublicIPv6,
+    stunServer: natInfo.server || null,
+    stunDetected: natInfo.detected || false,
+    ddnsUsable: natInfo.ddnsUsable !== false,
+    warning
+  };
 }
 
-/**
- * Detect NAT type and warn if no public IP
- * @param {string[]} [serverIds] - Optional list of STUN server IDs to use
- */
-async function detectNAT(serverIds) {
-  try {
-    const ipv4 = await getIPv4();
-    const ipv6Promise = getIPv6().catch(() => null);
-
-    const customServers = serverIds ? findServersByIds(serverIds) : undefined;
-    const natResult = await detectNatType(customServers.length > 0 ? customServers : undefined);
-    const ipv6 = await ipv6Promise;
-
-    return {
-      ipv4,
-      ipv6: ipv6 || null,
-      hasPublicIPv4: natResult.ddnsUsable,
-      hasPublicIPv6: !!ipv6,
-      nat: {
-        type: natResult.type,
-        name: natResult.name,
-        description: natResult.description,
-        localIP: natResult.localIP,
-        mappedIP: natResult.mappedIP,
-        mappedPort: natResult.mappedPort,
-        server: natResult.server,
-        serversQueried: natResult.serversQueried,
-        serversResponded: natResult.serversResponded
-      },
-      warning: getNatWarning(natResult.type)
-    };
-  } catch (e) {
-    return { error: e.message };
-  }
+function isPrivateIP(ip) {
+  if (!ip) return true;
+  return /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.)/.test(ip);
 }
 
-function getNatWarning(natType) {
-  switch (natType) {
-    case 'NAT0':
-      return null;
-    case 'NAT1':
-      return null;
-    case 'NAT4':
-      return '检测到对称型 NAT (Symmetric NAT)，不同 STUN 服务器返回不同映射，DDNS 可能无法正常工作，即使 DNS 解析成功也可能无法从外网访问';
-    default:
-      return 'NAT 类型未知';
-  }
-}
+// ======================= DDNS Sync =======================
 
-/**
- * Sync DDNS for a single domain config
- */
+const { createProvider } = require('./providers');
+
 async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Api, ipv6Api) {
   const { domain, rr, type } = domainConfig;
   const results = [];
 
-  // Determine which IP types to sync
   const types = [];
   if (type) {
     types.push(type);
@@ -155,14 +153,13 @@ async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Ap
     try {
       let currentIP;
       if (recordType === 'A') {
-        currentIP = await getIPv4(ipv4Api);
+        currentIP = await getIPv4();
       } else if (recordType === 'AAAA') {
-        currentIP = await getIPv6(ipv6Api);
+        currentIP = await getIPv6();
       } else {
         continue;
       }
 
-      // Find existing record
       const records = await client.describeDomainRecords(domain, rr, recordType);
       const existing = records.find(r => r.RR === rr && r.Type === recordType);
 
@@ -189,11 +186,8 @@ async function syncDomain(client, domainConfig, ipv4Enabled, ipv6Enabled, ipv4Ap
   return results;
 }
 
-/**
- * Run DDNS sync for all configured domains
- */
 async function syncAll(config) {
-  const { provider = 'aliyun', credentials = {}, domains, ipv4, ipv6, ipv4_api, ipv6_api } = config;
+  const { provider = 'aliyun', credentials = {}, domains, ipv4, ipv6 } = config;
   const providerCreds = credentials[provider] || {};
 
   if (!domains.length) {
@@ -210,14 +204,13 @@ async function syncAll(config) {
   }
 
   const allResults = [];
-
   for (const domainConfig of domains) {
     if (!domainConfig.enabled) continue;
-    const results = await syncDomain(client, domainConfig, ipv4, ipv6, ipv4_api, ipv6_api);
+    const results = await syncDomain(client, domainConfig, ipv4, ipv6);
     allResults.push(...results);
   }
 
   return allResults;
 }
 
-module.exports = { getIPv4, getIPv6, syncAll, fetchIP, detectNAT };
+module.exports = { getIPv4, getIPv6, syncAll, detectNAT };

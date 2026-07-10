@@ -1,302 +1,259 @@
+/**
+ * STUN (RFC 5389) client — zero dependencies.
+ * Sends Binding Requests to public STUN servers via UDP to detect:
+ *   1. Public IP/port (from server's response)
+ *   2. NAT type: NAT0 (Open), NAT1 (Full Cone), NAT4 (Symmetric)
+ *
+ * Classification logic:
+ *   - STUN response IP == local IP  →  NAT0 (no NAT at all)
+ *   - Same mapped port from 2+ servers  →  NAT1 (Full Cone)
+ *   - Different mapped ports            →  NAT4 (Symmetric)
+ */
+
 const dgram = require('dgram');
-const crypto = require('crypto');
-const os = require('os');
 
-// STUN message types (RFC 5389)
-const STUN_BINDING_REQUEST = 0x0001;
-const STUN_BINDING_RESPONSE = 0x0101;
 const STUN_MAGIC_COOKIE = 0x2112A442;
+const BINDING_REQUEST   = 0x0001;
+const BINDING_RESPONSE  = 0x0101;
+const ATTR_XOR_MAPPED   = 0x0020;
+const ATTR_MAPPED       = 0x0001;
 
-// Attribute types
-const XOR_MAPPED_ADDRESS = 0x0020;
-const MAPPED_ADDRESS = 0x0001;
-
-// Public STUN servers
+// Ten public STUN servers — pick the fastest responders
 const STUN_SERVERS = [
-  { id: 'tencent',      host: 'stun.qq.com',            port: 3478,  label: '腾讯云 STUN' },
-  { id: 'miwifi',       host: 'stun.miwifi.com',        port: 3478,  label: '小米路由器 STUN' },
-  { id: 'syncthing',    host: 'stun.syncthing.net',     port: 3478,  label: 'Syncthing STUN' },
-  { id: 'nextcloud',    host: 'stun.nextcloud.com',     port: 3478,  label: 'Nextcloud STUN' },
-  { id: 'isp-au',       host: 'stun.isp.net.au',        port: 3478,  label: 'ISP Australia STUN' },
-  { id: 'sipgate',      host: 'stun.sipgate.net',       port: 3478,  label: 'Sipgate STUN' },
-  { id: 'google',       host: 'stun.l.google.com',      port: 19302, label: 'Google STUN' },
-  { id: 'google2',      host: 'stun1.l.google.com',     port: 19302, label: 'Google STUN 2' },
-  { id: 'twilio',       host: 'stun.twilio.com',        port: 3478,  label: 'Twilio STUN' },
-  { id: 'cloudflare',   host: 'stun.cloudflare.com',    port: 3478,  label: 'Cloudflare STUN' },
+  { host: 'stun.l.google.com',         port: 19302 },
+  { host: 'stun1.l.google.com',        port: 19302 },
+  { host: 'stun2.l.google.com',        port: 19302 },
+  { host: 'stun.cloudflare.com',       port: 3478  },
+  { host: 'stun.miwifi.com',           port: 3478  },
+  { host: 'stun.qq.com',               port: 3478  },
+  { host: 'global.stun.twilio.com',    port: 3478  },
+  { host: 'stun.ekiga.net',            port: 3478  },
+  { host: 'stun.schlund.de',           port: 3478  },
+  { host: 'stun.voiparound.com',       port: 3478  }
 ];
 
-function buildStunRequest() {
+const SINGLE_TIMEOUT_MS = 1500;  // per-server timeout
+const RACE_COUNT        = 3;     // how many fast responses to collect
+
+// ======================= Wire Protocol =======================
+
+function buildBindingRequest() {
+  // Header: 20 bytes
+  //   type(2) + length(2) + magic(4) + transaction-id(12)
   const buf = Buffer.alloc(20);
-  buf.writeUInt16BE(STUN_BINDING_REQUEST, 0);
-  buf.writeUInt16BE(0, 2);
+  buf.writeUInt16BE(BINDING_REQUEST, 0);
+  buf.writeUInt16BE(0, 2);             // message length = 0 (no attributes)
   buf.writeUInt32BE(STUN_MAGIC_COOKIE, 4);
-  crypto.randomFillSync(buf, 8, 12);
+  // Transaction ID: 12 random bytes at offset 8
+  for (let i = 8; i < 20; i++) {
+    buf[i] = Math.floor(Math.random() * 256);
+  }
   return buf;
 }
 
 function parseStunResponse(buf) {
-  if (buf.length < 20) throw new Error('Response too short');
+  if (buf.length < 20) return null;
 
-  const msgType = buf.readUInt16BE(0);
-  if (msgType !== STUN_BINDING_RESPONSE) {
-    throw new Error(`Unexpected message type: 0x${msgType.toString(16)}`);
-  }
-
-  const magicCookie = buf.readUInt32BE(4);
-  if (magicCookie !== STUN_MAGIC_COOKIE) {
-    throw new Error('Invalid magic cookie');
-  }
+  const type = buf.readUInt16BE(0);
+  if (type !== BINDING_RESPONSE) return null;
 
   const msgLen = buf.readUInt16BE(2);
+  const magic  = buf.readUInt32BE(4);
+
+  // Walk attributes
   let offset = 20;
+  const end   = 20 + msgLen;
+  let ip = null;
+  let port = null;
 
-  while (offset < 20 + msgLen && offset + 4 <= buf.length) {
+  while (offset + 4 <= end) {
     const attrType = buf.readUInt16BE(offset);
-    const attrLen = buf.readUInt16BE(offset + 2);
+    const attrLen  = buf.readUInt16BE(offset + 2);
+    offset += 4;
 
-    if (attrType === XOR_MAPPED_ADDRESS && attrLen >= 8) {
-      const family = buf[offset + 5];
+    if (attrType === ATTR_XOR_MAPPED && attrLen >= 8) {
+      // XOR-MAPPED-ADDRESS (RFC 5389 §15.2)
+      buf.readUInt8(offset);       // reserved
+      const family = buf.readUInt8(offset + 1);
+      const xport  = buf.readUInt16BE(offset + 2) ^ (STUN_MAGIC_COOKIE >>> 16);
+
+      if (family === 0x01) {       // IPv4
+        const xaddr = buf.readUInt32BE(offset + 4) ^ STUN_MAGIC_COOKIE;
+        const a = (xaddr >>> 24) & 0xff;
+        const b = (xaddr >>> 16) & 0xff;
+        const c = (xaddr >>> 8)  & 0xff;
+        const d = xaddr & 0xff;
+        ip   = `${a}.${b}.${c}.${d}`;
+        port = xport;
+      } else if (family === 0x02) { // IPv6 (future-proof)
+        ip = null;
+      }
+      break;
+    }
+    if (attrType === ATTR_MAPPED && attrLen >= 8) {
+      // MAPPED-ADDRESS (legacy, RFC 3489)
+      buf.readUInt8(offset);
+      const family = buf.readUInt8(offset + 1);
+      const mport  = buf.readUInt16BE(offset + 2);
       if (family === 0x01) {
-        const port = buf.readUInt16BE(offset + 6) ^ 0x2112;
-        const xoredIP = buf.readUInt32BE(offset + 8) ^ STUN_MAGIC_COOKIE;
-        return {
-          ip: `${(xoredIP >>> 24) & 0xff}.${(xoredIP >>> 16) & 0xff}.${(xoredIP >>> 8) & 0xff}.${xoredIP & 0xff}`,
-          port,
-          family: 'IPv4'
-        };
+        const a = buf.readUInt8(offset + 4);
+        const b = buf.readUInt8(offset + 5);
+        const c = buf.readUInt8(offset + 6);
+        const d = buf.readUInt8(offset + 7);
+        ip   = `${a}.${b}.${c}.${d}`;
+        port = mport;
       }
     }
-
-    if (attrType === MAPPED_ADDRESS && attrLen >= 8) {
-      const family = buf[offset + 5];
-      if (family === 0x01) {
-        const port = buf.readUInt16BE(offset + 6);
-        const ip = buf.readUInt32BE(offset + 8);
-        return {
-          ip: `${(ip >>> 24) & 0xff}.${(ip >>> 16) & 0xff}.${(ip >>> 8) & 0xff}.${ip & 0xff}`,
-          port,
-          family: 'IPv4'
-        };
-      }
-    }
-
-    offset += 4 + ((attrLen + 3) & ~3);
+    offset += ((attrLen + 3) & ~3); // align to 4 bytes
   }
-
-  throw new Error('No mapped address in STUN response');
+  return ip ? { ip, port } : null;
 }
 
-function queryStunServer(host, port = 3478, timeout = 3000) {
+// ======================= Single Query =======================
+
+function stunQuery(server, timeoutMs = SINGLE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const socket = dgram.createSocket('udp4');
-    const request = buildStunRequest();
+    const request = buildBindingRequest();
+    let done = false;
 
     const timer = setTimeout(() => {
-      try { socket.close(); } catch (e) {}
-      reject(new Error(`STUN timeout: ${host}:${port}`));
-    }, timeout);
+      if (done) return;
+      done = true;
+      socket.close();
+      reject(new Error('timeout'));
+    }, timeoutMs);
 
     socket.on('message', (msg) => {
-      clearTimeout(timer);
-      try { socket.close(); } catch (e) {}
-      try {
-        resolve(parseStunResponse(msg));
-      } catch (e) {
-        reject(new Error(`STUN parse error (${host}): ${e.message}`));
+      if (done) return;
+      const result = parseStunResponse(msg);
+      if (result) {
+        done = true;
+        clearTimeout(timer);
+        socket.close();
+        resolve({ ...result, server: `${server.host}:${server.port}` });
       }
     });
 
-    socket.on('error', (err) => {
+    socket.on('error', (e) => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
-      try { socket.close(); } catch (e) {}
-      reject(new Error(`STUN error (${host}): ${err.message}`));
+      socket.close();
+      reject(e);
     });
 
-    socket.send(request, 0, request.length, port, host);
+    socket.send(request, server.port, server.host, (err) => {
+      if (err && !done) {
+        done = true;
+        clearTimeout(timer);
+        socket.close();
+        reject(err);
+      }
+    });
   });
 }
 
-// Query multiple STUN servers, return all successful results
-async function queryMultipleStun(servers, timeout = 3000) {
-  const results = [];
-  const promises = servers.map(async (server) => {
-    try {
-      const result = await queryStunServer(server.host, server.port, timeout);
-      result.server = server.host;
-      results.push(result);
-    } catch (e) {
-      // skip failed server
-    }
-  });
+// ======================= NAT Classification =======================
 
-  // Wait for all to settle, but return as soon as we have 2+ results
-  await Promise.allSettled(promises);
-  return results;
-}
+const os = require('os');
 
-// Legacy: query any single server
-async function queryStunAny(servers, timeout = 3000) {
-  for (const server of servers) {
-    try {
-      const result = await queryStunServer(server.host, server.port, timeout);
-      result.server = server.host;
-      return result;
-    } catch (e) {
-      // try next
-    }
-  }
-  throw new Error('All STUN servers failed');
-}
-
-function getLocalIP() {
-  const interfaces = os.networkInterfaces();
-  for (const [, addrs] of Object.entries(interfaces)) {
+function getLocalIPs() {
+  const result = [];
+  const nets = os.networkInterfaces();
+  for (const [name, addrs] of Object.entries(nets)) {
+    if (!addrs) continue;
     for (const addr of addrs) {
       if (addr.family === 'IPv4' && !addr.internal) {
-        return addr.address;
+        result.push(addr.address);
       }
     }
   }
-  return '127.0.0.1';
-}
-
-function isPrivateIP(ip) {
-  return /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.)/.test(ip);
+  return result;
 }
 
 /**
- * Detect NAT type using STUN protocol.
- *
- * NAT classification:
- *   NAT0 — Open Internet (公网IP): No NAT, device directly on public network
- *   NAT1 — Full Cone NAT (完全锥形): Most permissive, external hosts can send anytime
- *   NAT2 — Address-Restricted Cone NAT (地址限制型): Must have sent to external IP first (any port)
- *   NAT3 — Port-Restricted Cone NAT (端口限制型): Must have sent to external IP:port first
- *   NAT4 — Symmetric NAT (对称型): Different mappings for different destinations, P2P nearly impossible
- *
- * Detection method:
- *   - Query multiple STUN servers and compare their mapped addresses
- *   - If different IP → NAT4 (Symmetric NAT)
- *   - If same IP but different port → NAT4 (Symmetric NAT)
- *   - If same IP and same port → NAT1/2/3 (cone NAT, conservative estimate: NAT1)
- *   - We cannot precisely distinguish NAT1/2/3 with STUN alone
+ * Run STUN against multiple servers in parallel.
+ * Collect RACE_COUNT responses, then classify.
+ * Total timeout: SINGLE_TIMEOUT_MS + 500ms margin.
  */
-async function detectNatType(customServers) {
-  const localIP = getLocalIP();
-  const servers = customServers || STUN_SERVERS;
+async function detectNATType() {
+  // Race all servers; we only need RACE_COUNT good responses to classify
+  const promises = STUN_SERVERS.map((s) =>
+    stunQuery(s, SINGLE_TIMEOUT_MS).catch(() => null)
+  );
 
-  // Step 1: Query multiple STUN servers in parallel
-  const stunResults = await queryMultipleStun(servers);
+  // Wait for the first batch with a total deadline
+  const allResults = await Promise.allSettled(promises);
+  const responses = allResults
+    .filter((r) => r.status === 'fulfilled' && r.value !== null)
+    .map((r) => r.value);
 
-  if (stunResults.length === 0) {
+  if (responses.length === 0) {
     return {
-      type: 'NAT4',
-      name: 'Symmetric NAT',
-      description: '所有 STUN 服务器均无响应，UDP 可能被完全阻断',
-      localIP,
-      mappedIP: null,
-      mappedPort: null,
-      server: null,
-      serversQueried: servers.length,
-      serversResponded: 0,
-      ddnsUsable: false
+      natType: 'Unknown',
+      description: '无法连接任何 STUN 服务器',
+      publicIP: null,
+      ddnsUsable: null,
+      detected: false,
+      server: null
     };
   }
 
-  const stun1 = stunResults[0];
+  // Pick the first 2-3 responses for classification
+  const samples = responses.slice(0, RACE_COUNT);
+  const localIPs = getLocalIPs();
 
-  // Step 2: No NAT — local IP equals public IP
-  if (localIP === stun1.ip && !isPrivateIP(localIP)) {
+  // NAT0 check: does the STUN-reported IP match one of our local IPs?
+  const publicIP = samples[0].ip;
+  const isOpenNet = localIPs.includes(publicIP);
+
+  if (isOpenNet) {
     return {
-      type: 'NAT0',
-      name: 'Open Internet',
-      description: '本地 IP 即公网 IP，设备直接暴露在公网上，无 NAT 转换，限制最少',
-      localIP,
-      mappedIP: stun1.ip,
-      mappedPort: stun1.port,
-      server: stun1.server,
-      serversQueried: servers.length,
-      serversResponded: stunResults.length,
-      ddnsUsable: true
+      natType: 'NAT0',
+      description: '公网 (Open Internet) — 设备直接拥有公网 IP',
+      publicIP,
+      ddnsUsable: true,
+      detected: true,
+      server: samples[0].server
     };
   }
 
-  // Step 3: Only one server responded — conservative estimate
-  if (stunResults.length < 2) {
-    return {
-      type: 'NAT1',
-      name: 'Full Cone NAT',
-      description: '仅一个 STUN 服务器响应，保守判断为完全锥形 NAT，外网可主动连接映射地址',
-      localIP,
-      mappedIP: stun1.ip,
-      mappedPort: stun1.port,
-      server: stun1.server,
-      serversQueried: servers.length,
-      serversResponded: 1,
-      ddnsUsable: true
-    };
+  // NAT1 vs NAT4: compare mapped ports across servers
+  if (samples.length >= 2) {
+    const ports = samples.map((s) => s.port);
+    const allSamePort = ports.every((p) => p === ports[0]);
+
+    if (allSamePort) {
+      return {
+        natType: 'NAT1',
+        description: '完全锥形 NAT (Full Cone) — 最宽松，DDNS 可用',
+        publicIP,
+        ddnsUsable: true,
+        detected: true,
+        server: samples[0].server
+      };
+    } else {
+      return {
+        natType: 'NAT4',
+        description: '对称型 NAT (Symmetric) — 严格 NAT，DDNS 可能无法从外网访问',
+        publicIP,
+        ddnsUsable: false,
+        detected: true,
+        server: samples[0].server
+      };
+    }
   }
 
-  // Step 4: Compare mappings from different STUN servers
-  const ipChanged = stunResults.some(r => r.ip !== stun1.ip);
-  const portChanged = stunResults.some(r => r.port !== stun1.port);
-
-  if (ipChanged) {
-    // Different STUN servers returned different public IPs → Symmetric NAT
-    const details = stunResults.map(r => `${r.server} → ${r.ip}:${r.port}`).join(', ');
-    return {
-      type: 'NAT4',
-      name: 'Symmetric NAT',
-      description: `对称型 NAT：不同 STUN 服务器返回不同映射地址，基本无法 P2P 穿透。DDNS 可能无法正常工作`,
-      localIP,
-      mappedIP: stun1.ip,
-      mappedPort: stun1.port,
-      server: stun1.server,
-      serversQueried: servers.length,
-      serversResponded: stunResults.length,
-      ddnsUsable: false
-    };
-  }
-
-  if (portChanged) {
-    // Same IP but different ports → also Symmetric NAT
-    const details = stunResults.map(r => `${r.server} → ${r.ip}:${r.port}`).join(', ');
-    return {
-      type: 'NAT4',
-      name: 'Symmetric NAT',
-      description: `对称型 NAT：不同 STUN 服务器返回不同端口映射，基本无法 P2P 穿透。DDNS 可能无法正常工作`,
-      localIP,
-      mappedIP: stun1.ip,
-      mappedPort: stun1.port,
-      server: stun1.server,
-      serversQueried: servers.length,
-      serversResponded: stunResults.length,
-      ddnsUsable: false
-    };
-  }
-
-  // Step 5: All servers returned consistent mapping → Cone NAT
-  // We cannot precisely distinguish NAT1/2/3 with STUN alone
+  // Only got 1 response — can't classify, but at least we know our public IP
   return {
-    type: 'NAT1',
-    name: 'Full Cone / Restricted Cone NAT',
-    description: '多 STUN 服务器返回一致映射，可能是完全锥形或地址限制型 NAT。外网通常可主动连接，DDNS 可用',
-    localIP,
-    mappedIP: stun1.ip,
-    mappedPort: stun1.port,
-    server: stun1.server,
-    serversQueried: servers.length,
-    serversResponded: stunResults.length,
-    ddnsUsable: true
+    natType: 'NAT1?',
+    description: '完全锥形 NAT (推测) — 仅一个 STUN 服务器响应',
+    publicIP,
+    ddnsUsable: true,
+    detected: true,
+    server: samples[0].server
   };
 }
 
-function getStunServerList() {
-  return STUN_SERVERS.map(s => ({ id: s.id, host: s.host, port: s.port, label: s.label }));
-}
-
-function findServersByIds(ids) {
-  return ids.map(id => STUN_SERVERS.find(s => s.id === id)).filter(Boolean);
-}
-
-module.exports = { detectNatType, getLocalIP, queryStunServer, getStunServerList, findServersByIds, STUN_SERVERS };
+module.exports = { detectNATType };
