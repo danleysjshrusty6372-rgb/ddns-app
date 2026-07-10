@@ -68,16 +68,6 @@
     .status-error { background: #fde2e2; color: var(--danger); }
     .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: #fff; font-size: 14px; z-index: 999; animation: slideIn .3s ease; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-    .badge-nat0 { background: #e1f3d8; color: var(--success); }
-    .badge-nat1 { background: #e1f3d8; color: var(--success); }
-    .badge-nat2 { background: #faecd8; color: var(--warning); }
-    .badge-nat3 { background: #fde2e2; color: var(--danger); }
-    .badge-nat4 { background: #fde2e2; color: var(--danger); }
-    .nat-panel { margin-top:12px; display:none; padding:12px; background:#fafafa; border:1px solid var(--border); border-radius:6px; }
-    .nat-header { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
-    .nat-details { font-size:13px; color:var(--text-secondary); margin-bottom:8px; }
-    .nat-details code { background:#e8e8e8; padding:1px 6px; border-radius:3px; font-size:12px; }
-    .nat-warning { margin-top:8px; }
     .toast-success { background: var(--success); }
     .toast-error { background: var(--danger); }
     .toast-warning { background: var(--warning); }
@@ -89,7 +79,9 @@
     input:checked + .slider:before { transform: translateX(18px); }
     .status-row { display: flex; gap: 20px; flex-wrap: wrap; }
     .status-item { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-    .status-value { font-weight: 600; font-family: monospace; }
+    .status-value { font-weight: 600; font-family: monospace; transition: color .3s; }
+    .spinner-inline { display:inline-block;width:14px;height:14px;border:2px solid #e4e7ed;border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin-right:4px;vertical-align:middle; }
+    @keyframes spin2 { to { transform: rotate(360deg); } }
     .empty { text-align: center; color: var(--text-secondary); padding: 30px 0; font-size: 14px; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
@@ -152,29 +144,18 @@
         </div>
       </div>
       <div class="status-row">
-        <div class="status-item">当前 IPv4: <span class="status-value" id="ipv4Addr">-</span></div>
-        <div class="status-item">当前 IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
-        <button class="btn btn-sm btn-default" onclick="refreshIPs()">🔄 刷新IP</button>
+        <div class="status-item">IPv4: <span class="status-value" id="ipv4Addr">-</span></div>
+        <div class="status-item">IPv6: <span class="status-value" id="ipv6Addr">-</span></div>
+        <button class="btn btn-sm btn-default" onclick="refreshIPs()" id="refreshIpBtn">🔄 刷新IP</button>
       </div>
-      <div style="margin-top:12px;">
-        <details>
-          <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);user-select:none;">STUN 测试节点设置</summary>
-          <div id="stunServerList" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;"></div>
-          <div style="margin-top:6px;font-size:12px;color:var(--text-secondary);">
-            选择用于 NAT 类型检测的 STUN 服务器（至少 2 个以获得准确结果）
-          </div>
-        </details>
-      </div>
-      <div id="natPanel" class="nat-panel">
-        <div class="nat-header">
-          <span style="font-weight:600;">NAT 类型:</span>
-          <span id="natType" class="badge">-</span>
-          <span id="natName" style="font-size:13px;color:var(--text-secondary);"></span>
+      <div id="natPanel" style="margin-top:12px;padding:12px;background:#f0f9eb;border-radius:6px;display:none;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <div style="font-size:14px;font-weight:600;">NAT 类型:</div>
+          <span class="badge badge-info" id="natTypeBadge" style="font-size:15px;padding:6px 16px;">检测中...</span>
+          <div style="font-size:13px;color:var(--text-secondary);" id="natDesc"></div>
         </div>
-        <div id="natDetails" class="nat-details"></div>
-        <div id="natDescription" style="display:none;"></div>
-        <div id="natWarning" class="nat-warning"></div>
       </div>
+      <div id="natWarning" style="margin-top:10px;display:none;"></div>
     </div>
 
     <!-- 域名管理 -->
@@ -306,7 +287,6 @@
       document.getElementById('intervalInput').value = config.interval || 300;
       domains = config.domains || [];
       renderDomains();
-      loadStunServers();
       refreshIPs();
       refreshStatus();
       refreshLogs();
@@ -374,71 +354,76 @@
       }
     }
 
-    async function loadStunServers() {
-      const servers = await api('/api/stun-servers');
-      const container = document.getElementById('stunServerList');
-      container.innerHTML = servers.map(s =>
-        `<label style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#f0f0f0;border-radius:4px;font-size:12px;cursor:pointer;">
-          <input type="checkbox" value="${s.id}" checked class="stun-cb"> ${s.label}
-        </label>`
-      ).join('');
-    }
-
-    function getSelectedStunServers() {
-      return Array.from(document.querySelectorAll('.stun-cb:checked')).map(cb => cb.value);
-    }
-
     async function refreshIPs() {
-      const btn = event && event.target;
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ 检测中...'; }
-      const servers = getSelectedStunServers();
-      const qs = servers.length ? '?servers=' + servers.join(',') : '';
-      const data = await api('/api/current-ips' + qs);
-      if (btn) { btn.disabled = false; btn.textContent = '🔄 刷新IP'; }
-      document.getElementById('ipv4Addr').textContent = data.ipv4 || 'N/A';
-      document.getElementById('ipv6Addr').textContent = data.ipv6 || 'N/A';
+      const v4El = document.getElementById('ipv4Addr');
+      const v6El = document.getElementById('ipv6Addr');
+      const btn = document.getElementById('refreshIpBtn');
+      const natPanel = document.getElementById('natPanel');
+      const natBadge = document.getElementById('natTypeBadge');
+      const natDesc = document.getElementById('natDesc');
 
-      const panel = document.getElementById('natPanel');
-      if (data.nat) {
-        panel.style.display = 'block';
-        const typeEl = document.getElementById('natType');
-        typeEl.textContent = data.nat.type;
-        typeEl.className = `badge badge-${data.nat.type.toLowerCase()}`;
-        document.getElementById('natName').textContent = data.nat.name || '';
+      // Show loading state immediately
+      v4El.textContent = '⏳ 检测中...';
+      v6El.textContent = '⏳ 检测中...';
+      v4El.style.color = 'var(--text-secondary)';
+      v6El.style.color = 'var(--text-secondary)';
+      btn.disabled = true;
+      natPanel.style.display = 'block';
+      natPanel.style.background = '#f0f9eb';
+      natBadge.className = 'badge badge-info';
+      natBadge.textContent = '⏳ 检测中...';
+      natDesc.textContent = '正在连接 STUN 服务器...';
 
-        const details = [];
-        if (data.nat.localIP) details.push(`本地 IP: <code>${data.nat.localIP}</code>`);
-        if (data.nat.mappedIP) details.push(`映射地址: <code>${data.nat.mappedIP}:${data.nat.mappedPort}</code>`);
-        if (data.nat.server) details.push(`主 STUN: <code>${data.nat.server}</code>`);
-        if (data.nat.serversQueried) details.push(`测试节点: <code>${data.nat.serversResponded}/${data.nat.serversQueried} 响应</code>`);
-        document.getElementById('natDetails').innerHTML = details.join(' &nbsp;|&nbsp; ');
+      try {
+        const data = await api('/api/current-ips');
+        v4El.textContent = data.ipv4 || 'N/A';
+        v6El.textContent = data.ipv6 || 'N/A';
+        v4El.style.color = '';
+        v6El.style.color = '';
 
-        const descDiv = document.getElementById('natDescription');
-        if (data.nat.description) {
-          descDiv.innerHTML = `<div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">${data.nat.description}</div>`;
-          descDiv.style.display = 'block';
+        // NAT type panel
+        if (data.stunDetected) {
+          const colors = {
+            'NAT0': { bg: '#e1f3d8', badge: 'badge-success', icon: '🟢' },
+            'NAT1': { bg: '#e1f3d8', badge: 'badge-success', icon: '🟡' },
+            'NAT4': { bg: '#fde2e2', badge: 'badge-danger', icon: '🔴' }
+          };
+          const style = colors[data.natType] || { bg: '#f5f7fa', badge: 'badge-info', icon: '⚪' };
+          natPanel.style.background = style.bg;
+          natBadge.className = `badge ${style.badge}`;
+          natBadge.textContent = `${style.icon} ${data.natType}`;
+          natDesc.textContent = data.natDescription;
+          if (data.stunServer) {
+            natDesc.textContent += ` (STUN: ${data.stunServer})`;
+          }
         } else {
-          descDiv.style.display = 'none';
+          natBadge.className = 'badge badge-warning';
+          natBadge.textContent = '⚠️ 未知';
+          natDesc.textContent = data.natDescription || 'STUN 检测不可用';
+          natPanel.style.background = '#faecd8';
         }
 
+        // Warning
         const warningDiv = document.getElementById('natWarning');
         if (data.warning) {
-          const severity = data.nat.type === 'NAT4' ? 'danger' : 'warning';
-          warningDiv.innerHTML = `<div class="badge badge-${severity}">⚠️ ${data.warning}</div>`;
+          warningDiv.innerHTML = `<div class="badge badge-warning">⚠️ ${data.warning}</div>`;
+          warningDiv.style.display = 'block';
+        } else if (data.ddnsUsable !== false && (data.hasPublicIPv4 || data.hasPublicIPv6)) {
+          warningDiv.innerHTML = '<div class="badge badge-success">✅ 公网 IP 可用，DDNS 正常</div>';
+          warningDiv.style.display = 'block';
         } else {
-          warningDiv.innerHTML = `<div class="badge badge-success">✅ NAT 类型正常，DDNS 可用</div>`;
+          warningDiv.style.display = 'none';
         }
-      } else if (data.warning) {
-        panel.style.display = 'block';
-        document.getElementById('natType').textContent = '未知';
-        document.getElementById('natType').className = 'badge badge-warning';
-        document.getElementById('natName').textContent = '';
-        document.getElementById('natDetails').innerHTML = '';
-        document.getElementById('natDescription').style.display = 'none';
-        document.getElementById('natWarning').innerHTML =
-          `<div class="badge badge-warning">⚠️ ${data.warning}</div>`;
-      } else {
-        panel.style.display = 'none';
+      } catch (e) {
+        v4El.textContent = '检测失败';
+        v6El.textContent = '检测失败';
+        v4El.style.color = '';
+        v6El.style.color = '';
+        natBadge.textContent = '❌ 失败';
+        natBadge.className = 'badge badge-danger';
+        natDesc.textContent = '网络异常或 STUN 不可达';
+      } finally {
+        btn.disabled = false;
       }
     }
 
